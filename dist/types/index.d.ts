@@ -1,4 +1,4 @@
-import * as react from "react";
+import * as react from 'react';
 
 /**
  * 🧩 EditorFrame
@@ -7,9 +7,7 @@ import * as react from "react";
  *
  * @public
  */
-export declare const EditorFrame: react.ForwardRefExoticComponent<
-  EditorFrameProps & react.RefAttributes<EditorFrameHandle>
->;
+export declare const EditorFrame: react.ForwardRefExoticComponent<EditorFrameProps & react.RefAttributes<EditorFrameHandle>>;
 
 /**
  * 🧩 RichtextEditor
@@ -29,4 +27,4 @@ export declare const RichtextEditor: react.FC<RichtextEditorProps>;
  */
 export declare const Toolbar: react.FC<ToolbarProps>;
 
-export {};
+export { }
