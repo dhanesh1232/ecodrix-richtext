@@ -1,10 +1,15 @@
-import * as react from 'react';
+import * as react from "react";
 
-export declare const EditorFrame: react.FC<EditorFrameProps>;
-
-export declare interface EditorFrameProps {
-    initialContent?: string;
-}
+/**
+ * 🧩 EditorFrame
+ *
+ * Main editor component for ECOD EditorFrame.
+ *
+ * @public
+ */
+export declare const EditorFrame: react.ForwardRefExoticComponent<
+  EditorFrameProps & react.RefAttributes<EditorFrameHandle>
+>;
 
 /**
  * 🧩 RichtextEditor
@@ -15,6 +20,13 @@ export declare interface EditorFrameProps {
  */
 export declare const RichtextEditor: react.FC<RichtextEditorProps>;
 
+/**
+ * 🧩 Toolbar
+ *
+ * Main editor component for ECOD Toolbar.
+ *
+ * @public
+ */
 export declare const Toolbar: react.FC<ToolbarProps>;
 
-export { }
+export {};
