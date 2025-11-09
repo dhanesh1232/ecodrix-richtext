@@ -1,6 +1,7 @@
 import {
   Baseline,
   Bold,
+  Code2,
   Ellipsis,
   Heading1,
   Heading2,
@@ -20,7 +21,9 @@ import {
   Pilcrow,
   Quote,
   Redo2,
+  RotateCcw,
   Strikethrough,
+  Superscript,
   TableIcon,
   TextAlignCenter,
   TextAlignEnd,
@@ -59,4 +62,7 @@ export const Icons = {
   indent: Indent,
   outdent: Outdent,
   table: TableIcon,
+  code: Code2,
+  superscript: Superscript,
+  reset: RotateCcw,
 } as const;
