@@ -26,7 +26,7 @@ export function editorRuntimeInit() {
   }
 
   function send(type: string, payload: Record<string, unknown> = {}) {
-    parent.postMessage({ type, ...payload }, "*");
+    parent.postMessage(Object.assign({ type }, payload), "*");
   }
 
   if (

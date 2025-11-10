@@ -53,7 +53,7 @@ export const EditorProvider: React.FC<{
   initialContent?: string;
   children?: React.ReactNode;
   onChange?: (editor: EditorCore) => void;
-}> = ({ initialContent = "<p>Start typing…</p>", children, onChange }) => {
+}> = ({ initialContent = "Start typing...", children, onChange }) => {
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
 
   const [core, setCore] = React.useState<EditorCore | null>(null);
@@ -65,7 +65,11 @@ export const EditorProvider: React.FC<{
   React.useEffect(() => {
     if (!iframeRef.current) return;
 
-    const editor = new EditorCore(iframeRef.current, initialContent);
+    const editor = new EditorCore(
+      iframeRef.current,
+      `<p>${initialContent}</p>`
+    );
+
     editor.init();
     setCore(editor);
 

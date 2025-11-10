@@ -63,7 +63,7 @@ function editorRuntimeInit() {
     s == null ? void 0 : s.addRange(lastRange);
   }
   function send(type, payload = {}) {
-    parent.postMessage(__spreadValues({ type }, payload), "*");
+    parent.postMessage(Object.assign({ type }, payload), "*");
   }
   if (document.readyState === "complete" || document.readyState === "interactive") {
     notifyReadySafely();
@@ -351,93 +351,110 @@ var EditorCore = class {
     this.doc = doc;
     this.win = iframe.contentWindow;
     const htmlTemplate = `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <style>
-            html, body {
-              height: 100%;
-              min-height: 100%;
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-              overflow-y: auto;
-              cursor: text;
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root {
+        --editor-bg: #ffffff;
+        --editor-fg: #111111;
+        --editor-accent: #3b82f6; /* blue-500 */
+        --editor-placeholder: rgba(100, 116, 139, 0.6); /* slate-500 */
+      }
 
-              /* inherit from parent app */
-              background: inherit !important;
-              color: inherit !important;
-              font: inherit !important;
-            }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --editor-bg: #0a0a0a;
+          --editor-fg: #f8fafc;
+          --editor-accent: #60a5fa; /* lighter blue for dark bg */
+          --editor-placeholder: rgba(148, 163, 184, 0.6);
+        }
+      }
 
-            *, *::before, *::after {
-              box-sizing: inherit;
-            }
+      html, body {
+        height: 100%;
+        min-height: 100%;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        overflow-y: auto;
+        cursor: text;
+        background: var(--editor-bg);
+        color: var(--editor-fg);
+        font-family: system-ui, -apple-system, sans-serif;
+        line-height: 1.6;
+        transition: background-color 0.25s ease, color 0.25s ease;
+      }
 
-            body {
-              padding: 0.75rem;
-              line-height: 1.6;
-              display: flex;
-              flex-direction: column;
-            }
+      *, *::before, *::after {
+        box-sizing: inherit;
+      }
 
-            [contenteditable]:focus { outline: none; }
+      body {
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        caret-color: var(--editor-accent);
+      }
 
-            p, h1, h2, h3, h4, h5, h6, pre, blockquote {
-              margin: 0 0 0.8em;
-            }
+      [contenteditable]:focus {
+        outline: none;
+      }
 
-            a {
-              color: inherit;
-              text-decoration: underline;
-            }
+      /* \u{1F447} Force caret (text cursor) to stay blue across all blocks */
+      p, div, h1, h2, h3, h4, h5, h6, pre, blockquote, table, li {
+        caret-color: var(--editor-accent);
+      }
 
-            blockquote {
-              border-left: 3px solid currentColor;
-              padding-left: 1em;
-              opacity: 0.85;
-            }
+      p, h1, h2, h3, h4, h5, h6, pre, blockquote {
+        margin: 0 0 0.8em;
+      }
 
-            pre {
-              background: color-mix(in srgb, currentColor 5%, transparent);
-              padding: 0.6em;
-              border-radius: 6px;
-              font-family: ui-monospace, monospace;
-            }
+      a {
+        color: var(--editor-accent);
+        text-decoration: underline;
+      }
 
-            table {
-              border-collapse: collapse;
-              width: 100%;
-              margin-bottom: 1em;
-            }
+      blockquote {
+        border-left: 3px solid var(--editor-accent);
+        padding-left: 1em;
+        opacity: 0.9;
+      }
 
-            td, th {
-              border: 1px solid currentColor;
-              opacity: 0.5;
-              padding: 6px;
-            }
+      pre {
+        background: color-mix(in srgb, var(--editor-accent) 10%, transparent);
+        padding: 0.6em;
+        border-radius: 6px;
+        font-family: ui-monospace, monospace;
+      }
 
-            ::selection {
-              background: color-mix(in srgb, currentColor 30%, transparent);
-            }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 1em;
+      }
 
-            body:empty::before {
-              content: attr(data-placeholder);
-              opacity: 0.5;
-              pointer-events: none;
-            }
+      td, th {
+        border: 1px solid color-mix(in srgb, var(--editor-fg) 25%, transparent);
+        padding: 6px;
+      }
 
-            /* optional smooth transition for dark/light switch */
-            html, body {
-              transition: background-color 0.25s ease, color 0.25s ease;
-            }
-          </style>
-        </head>
-        <body contenteditable="true" data-placeholder="Start typing..."></body>
-      </html>
-    `;
+      body:empty::before {
+        content: attr(data-placeholder);
+        color: var(--editor-placeholder);
+        pointer-events: none;
+      }
+
+      html, body {
+        transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
+      }
+    </style>
+  </head>
+  <body contenteditable="true" data-placeholder="Start typing..."></body>
+</html>
+`;
     doc.open();
     doc.write(htmlTemplate);
     doc.close();
@@ -570,7 +587,7 @@ var useEditor = () => {
   if (!ctx) throw new Error("useEditor must be used inside <EditorProvider>");
   return ctx;
 };
-var EditorProvider = ({ initialContent = "<p>Start typing\u2026</p>", children, onChange }) => {
+var EditorProvider = ({ initialContent = "Start typing...", children, onChange }) => {
   const iframeRef = React.useRef(null);
   const [core, setCore] = React.useState(null);
   const [ctx, setCtx] = React.useState(defaultCtx);
@@ -579,7 +596,10 @@ var EditorProvider = ({ initialContent = "<p>Start typing\u2026</p>", children, 
   const [isFocused, setIsFocused] = React.useState(false);
   React.useEffect(() => {
     if (!iframeRef.current) return;
-    const editor = new EditorCore(iframeRef.current, initialContent);
+    const editor = new EditorCore(
+      iframeRef.current,
+      `<p>${initialContent}</p>`
+    );
     editor.init();
     setCore(editor);
     editor.on("update", () => {
@@ -2036,7 +2056,7 @@ var ToolbarChain = ({ format }) => {
 // src/components/richtext/editor.tsx
 import { jsx as jsx20 } from "react/jsx-runtime";
 var RichtextEditor = ({
-  initialContent = "<p>Start typing\u2026</p>",
+  initialContent,
   loader = "shine",
   toolbar,
   onChange

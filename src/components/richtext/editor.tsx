@@ -5,7 +5,7 @@ import { DotsLoader, EditorSkeleton, SpinnerLoader } from "./ui";
 import { ToolbarChain } from "./toolbar/ToolbarChain";
 
 export const RichtextEditor: React.FC<RichtextEditorProps> = ({
-  initialContent = "<p>Start typing…</p>",
+  initialContent,
   loader = "shine",
   toolbar,
   onChange,
