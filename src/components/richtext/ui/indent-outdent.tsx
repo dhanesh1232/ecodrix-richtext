@@ -11,6 +11,7 @@ export const IndentOutdentSection: React.FC<IndentOutdentSectionProps> = ({
     <ToolbarGroup>
       <ToolbarButton
         toolButtonSize={size}
+        tooltip="Indent"
         disabled={ctx?.isIndented}
         onClick={() => execute("indent")}
       >
@@ -18,6 +19,7 @@ export const IndentOutdentSection: React.FC<IndentOutdentSectionProps> = ({
       </ToolbarButton>
       <ToolbarButton
         toolButtonSize={size}
+        tooltip="Outdent"
         disabled={!ctx?.isIndented}
         onClick={() => execute("outdent")}
       >

@@ -2,4 +2,4 @@
 
 export type * from "./types/globals";
 import "./app/globals.css";
-export * from "./components";
+export { RichtextEditor } from "./components/richtext/editor";

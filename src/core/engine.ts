@@ -40,48 +40,94 @@ export class EditorCore {
 
     this.doc = doc;
     this.win = iframe.contentWindow;
-
     const htmlTemplate = `
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <style>
-          body {
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 0;
-            padding: 0.75rem;
-            color: #111;
-            line-height: 1.6;
-            background: #fff;
-          }
-          [contenteditable]:focus { outline: none; }
-          p, h1, h2, h3, h4, h5, h6, pre, blockquote { margin: 0 0 0.8em; }
-          blockquote {
-            border-left: 3px solid #ddd;
-            padding-left: 1em;
-            color: #555;
-          }
-          pre {
-            background: #f6f6f6;
-            padding: 0.6em;
-            border-radius: 6px;
-          }
-          table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 1em;
-          }
-          td, th {
-            border: 1px solid #ccc;
-            padding: 6px;
-          }
-        </style>
-      </head>
-      <body contenteditable="true"></body>
-    </html>
-  `;
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <style>
+            html, body {
+              height: 100%;
+              min-height: 100%;
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+              overflow-y: auto;
+              cursor: text;
+
+              /* inherit from parent app */
+              background: inherit !important;
+              color: inherit !important;
+              font: inherit !important;
+            }
+
+            *, *::before, *::after {
+              box-sizing: inherit;
+            }
+
+            body {
+              padding: 0.75rem;
+              line-height: 1.6;
+              display: flex;
+              flex-direction: column;
+            }
+
+            [contenteditable]:focus { outline: none; }
+
+            p, h1, h2, h3, h4, h5, h6, pre, blockquote {
+              margin: 0 0 0.8em;
+            }
+
+            a {
+              color: inherit;
+              text-decoration: underline;
+            }
+
+            blockquote {
+              border-left: 3px solid currentColor;
+              padding-left: 1em;
+              opacity: 0.85;
+            }
+
+            pre {
+              background: color-mix(in srgb, currentColor 5%, transparent);
+              padding: 0.6em;
+              border-radius: 6px;
+              font-family: ui-monospace, monospace;
+            }
+
+            table {
+              border-collapse: collapse;
+              width: 100%;
+              margin-bottom: 1em;
+            }
+
+            td, th {
+              border: 1px solid currentColor;
+              opacity: 0.5;
+              padding: 6px;
+            }
+
+            ::selection {
+              background: color-mix(in srgb, currentColor 30%, transparent);
+            }
+
+            body:empty::before {
+              content: attr(data-placeholder);
+              opacity: 0.5;
+              pointer-events: none;
+            }
+
+            /* optional smooth transition for dark/light switch */
+            html, body {
+              transition: background-color 0.25s ease, color 0.25s ease;
+            }
+          </style>
+        </head>
+        <body contenteditable="true" data-placeholder="Start typing..."></body>
+      </html>
+    `;
 
     doc.open();
     doc.write(htmlTemplate);

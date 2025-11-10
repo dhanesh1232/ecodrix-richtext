@@ -1,13 +1,6 @@
 // src/context/editor.tsx
 "use client";
-import React, {
-  createContext,
-  useContext,
-  useRef,
-  useState,
-  useEffect,
-  useCallback,
-} from "react";
+import * as React from "react";
 import { EditorCore } from "@/core/engine";
 
 const defaultCtx: EditorContextState = {
@@ -48,20 +41,28 @@ export type EditorContextShape = {
   refreshCtx: () => void;
 };
 
-const EditorContext = createContext<EditorContextShape | null>(null);
+const EditorContext = React.createContext<EditorContextShape | null>(null);
+
+export const useEditor = () => {
+  const ctx = React.useContext(EditorContext);
+  if (!ctx) throw new Error("useEditor must be used inside <EditorProvider>");
+  return ctx;
+};
 
 export const EditorProvider: React.FC<{
   initialContent?: string;
   children?: React.ReactNode;
   onChange?: (editor: EditorCore) => void;
 }> = ({ initialContent = "<p>Start typing…</p>", children, onChange }) => {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [core, setCore] = useState<EditorCore | null>(null);
-  const [ctx, setCtx] = useState(defaultCtx);
-  const [html, setHtml] = useState(initialContent);
-  const [json, setJson] = useState<object[]>([]);
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
 
-  useEffect(() => {
+  const [core, setCore] = React.useState<EditorCore | null>(null);
+  const [ctx, setCtx] = React.useState(defaultCtx);
+  const [html, setHtml] = React.useState(initialContent);
+  const [json, setJson] = React.useState<object[]>([]);
+  const [isFocused, setIsFocused] = React.useState(false);
+
+  React.useEffect(() => {
     if (!iframeRef.current) return;
 
     const editor = new EditorCore(iframeRef.current, initialContent);
@@ -92,7 +93,35 @@ export const EditorProvider: React.FC<{
     return () => editor.destroy();
   }, [iframeRef, onChange, initialContent]);
 
-  const refreshCtx = useCallback(() => {
+  React.useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+
+    const handleFocus = () => setIsFocused(true);
+    const handleBlur = () => setIsFocused(false);
+
+    const interval = setInterval(() => {
+      const body = doc.body;
+      if (body) {
+        body.addEventListener("focus", handleFocus);
+        body.addEventListener("blur", handleBlur);
+        clearInterval(interval);
+      }
+    }, 200);
+
+    return () => {
+      clearInterval(interval);
+      const body = doc.body;
+      if (body) {
+        body.removeEventListener("focus", handleFocus);
+        body.removeEventListener("blur", handleBlur);
+      }
+    };
+  }, [iframeRef]);
+
+  const refreshCtx = React.useCallback(() => {
     if (!core?.doc) return;
     const doc = core.doc;
     const block = (doc.queryCommandValue("formatBlock") || "P").toUpperCase();
@@ -135,13 +164,25 @@ export const EditorProvider: React.FC<{
         refreshCtx,
       }}
     >
-      {children}
+      <div
+        data-focused={isFocused}
+        className="
+    relative border border-border rounded-sm 
+    transition-all duration-200 ring-0 
+    data-[focused=true]:ring-1 ring-blue-500/70 shadow-sm
+    hover:border-blue-400 cursor-text
+  "
+      >
+        {children}
+        <iframe
+          ref={iframeRef}
+          className="
+      w-full h-[350px] border-0 rounded-b 
+      bg-background cursor-text focus:cursor-text
+    "
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+        />
+      </div>
     </EditorContext.Provider>
   );
-};
-
-export const useEditor = () => {
-  const ctx = useContext(EditorContext);
-  if (!ctx) throw new Error("useEditor must be used inside <EditorProvider>");
-  return ctx;
 };

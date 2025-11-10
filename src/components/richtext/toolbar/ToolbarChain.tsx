@@ -38,7 +38,7 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({ format }) => {
       <ToolbarButtonSeparator orientation="vertical" />
       <TextFormatSection ctx={ctx} size="xs" format={format} />
       <StyleFormatSection ctx={ctx} size="xs" />
-      <ToolbarButtonSeparator />
+      <ToolbarButtonSeparator orientation="vertical" />
       <ListSelectorSection ctx={ctx} size="xs" />
       <IndentOutdentSection size="xs" ctx={ctx} />
       <TextAlignerSection ctx={ctx} size="xs" />

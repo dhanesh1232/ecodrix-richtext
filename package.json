@@ -1,6 +1,6 @@
 {
   "name": "@ecodrix/richtext",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "A modular rich text editor with toolbar and iframe support.",
   "private": false,
   "type": "module",

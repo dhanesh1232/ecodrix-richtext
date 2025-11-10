@@ -37,14 +37,7 @@ import "./globals.css";
 import * as React10 from "react";
 
 // src/context/editor.tsx
-import {
-  createContext,
-  useContext,
-  useRef,
-  useState,
-  useEffect,
-  useCallback
-} from "react";
+import * as React from "react";
 
 // src/core/runtime.ts
 function editorRuntimeInit() {
@@ -358,46 +351,93 @@ var EditorCore = class {
     this.doc = doc;
     this.win = iframe.contentWindow;
     const htmlTemplate = `
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <style>
-          body {
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 0;
-            padding: 0.75rem;
-            color: #111;
-            line-height: 1.6;
-            background: #fff;
-          }
-          [contenteditable]:focus { outline: none; }
-          p, h1, h2, h3, h4, h5, h6, pre, blockquote { margin: 0 0 0.8em; }
-          blockquote {
-            border-left: 3px solid #ddd;
-            padding-left: 1em;
-            color: #555;
-          }
-          pre {
-            background: #f6f6f6;
-            padding: 0.6em;
-            border-radius: 6px;
-          }
-          table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 1em;
-          }
-          td, th {
-            border: 1px solid #ccc;
-            padding: 6px;
-          }
-        </style>
-      </head>
-      <body contenteditable="true"></body>
-    </html>
-  `;
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <style>
+            html, body {
+              height: 100%;
+              min-height: 100%;
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+              overflow-y: auto;
+              cursor: text;
+
+              /* inherit from parent app */
+              background: inherit !important;
+              color: inherit !important;
+              font: inherit !important;
+            }
+
+            *, *::before, *::after {
+              box-sizing: inherit;
+            }
+
+            body {
+              padding: 0.75rem;
+              line-height: 1.6;
+              display: flex;
+              flex-direction: column;
+            }
+
+            [contenteditable]:focus { outline: none; }
+
+            p, h1, h2, h3, h4, h5, h6, pre, blockquote {
+              margin: 0 0 0.8em;
+            }
+
+            a {
+              color: inherit;
+              text-decoration: underline;
+            }
+
+            blockquote {
+              border-left: 3px solid currentColor;
+              padding-left: 1em;
+              opacity: 0.85;
+            }
+
+            pre {
+              background: color-mix(in srgb, currentColor 5%, transparent);
+              padding: 0.6em;
+              border-radius: 6px;
+              font-family: ui-monospace, monospace;
+            }
+
+            table {
+              border-collapse: collapse;
+              width: 100%;
+              margin-bottom: 1em;
+            }
+
+            td, th {
+              border: 1px solid currentColor;
+              opacity: 0.5;
+              padding: 6px;
+            }
+
+            ::selection {
+              background: color-mix(in srgb, currentColor 30%, transparent);
+            }
+
+            body:empty::before {
+              content: attr(data-placeholder);
+              opacity: 0.5;
+              pointer-events: none;
+            }
+
+            /* optional smooth transition for dark/light switch */
+            html, body {
+              transition: background-color 0.25s ease, color 0.25s ease;
+            }
+          </style>
+        </head>
+        <body contenteditable="true" data-placeholder="Start typing..."></body>
+      </html>
+    `;
     doc.open();
     doc.write(htmlTemplate);
     doc.close();
@@ -496,7 +536,7 @@ var EditorCore = class {
 };
 
 // src/context/editor.tsx
-import { jsx } from "react/jsx-runtime";
+import { jsx, jsxs } from "react/jsx-runtime";
 var defaultCtx = {
   block: "P",
   bold: false,
@@ -524,14 +564,20 @@ var defaultCtx = {
   canRedo: false,
   isIndented: false
 };
-var EditorContext = createContext(null);
+var EditorContext = React.createContext(null);
+var useEditor = () => {
+  const ctx = React.useContext(EditorContext);
+  if (!ctx) throw new Error("useEditor must be used inside <EditorProvider>");
+  return ctx;
+};
 var EditorProvider = ({ initialContent = "<p>Start typing\u2026</p>", children, onChange }) => {
-  const iframeRef = useRef(null);
-  const [core, setCore] = useState(null);
-  const [ctx, setCtx] = useState(defaultCtx);
-  const [html, setHtml] = useState(initialContent);
-  const [json, setJson] = useState([]);
-  useEffect(() => {
+  const iframeRef = React.useRef(null);
+  const [core, setCore] = React.useState(null);
+  const [ctx, setCtx] = React.useState(defaultCtx);
+  const [html, setHtml] = React.useState(initialContent);
+  const [json, setJson] = React.useState([]);
+  const [isFocused, setIsFocused] = React.useState(false);
+  React.useEffect(() => {
     if (!iframeRef.current) return;
     const editor = new EditorCore(iframeRef.current, initialContent);
     editor.init();
@@ -552,7 +598,31 @@ var EditorProvider = ({ initialContent = "<p>Start typing\u2026</p>", children, 
     });
     return () => editor.destroy();
   }, [iframeRef, onChange, initialContent]);
-  const refreshCtx = useCallback(() => {
+  React.useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    const handleFocus = () => setIsFocused(true);
+    const handleBlur = () => setIsFocused(false);
+    const interval = setInterval(() => {
+      const body = doc.body;
+      if (body) {
+        body.addEventListener("focus", handleFocus);
+        body.addEventListener("blur", handleBlur);
+        clearInterval(interval);
+      }
+    }, 200);
+    return () => {
+      clearInterval(interval);
+      const body = doc.body;
+      if (body) {
+        body.removeEventListener("focus", handleFocus);
+        body.removeEventListener("blur", handleBlur);
+      }
+    };
+  }, [iframeRef]);
+  const refreshCtx = React.useCallback(() => {
     if (!(core == null ? void 0 : core.doc)) return;
     const doc = core.doc;
     const block = (doc.queryCommandValue("formatBlock") || "P").toUpperCase();
@@ -593,32 +663,30 @@ var EditorProvider = ({ initialContent = "<p>Start typing\u2026</p>", children, 
         iframeRef,
         refreshCtx
       },
-      children
-    }
-  );
-};
-var useEditor = () => {
-  const ctx = useContext(EditorContext);
-  if (!ctx) throw new Error("useEditor must be used inside <EditorProvider>");
-  return ctx;
-};
-
-// src/components/richtext/editor/iframe.tsx
-import { jsx as jsx2 } from "react/jsx-runtime";
-var EditorFrame = () => {
-  const { iframeRef } = useEditor();
-  return /* @__PURE__ */ jsx2(
-    "iframe",
-    {
-      ref: iframeRef,
-      className: "w-full h-[350px] border-0 rounded-b bg-background",
-      sandbox: "allow-same-origin allow-scripts allow-forms allow-popups"
+      children: /* @__PURE__ */ jsxs(
+        "div",
+        {
+          "data-focused": isFocused,
+          className: "\n    relative border border-border rounded-sm \n    transition-all duration-200 ring-0 \n    data-[focused=true]:ring-1 ring-blue-500/70 shadow-sm\n    hover:border-blue-400 cursor-text\n  ",
+          children: [
+            children,
+            /* @__PURE__ */ jsx(
+              "iframe",
+              {
+                ref: iframeRef,
+                className: "\n      w-full h-[350px] border-0 rounded-b \n      bg-background cursor-text focus:cursor-text\n    ",
+                sandbox: "allow-same-origin allow-scripts allow-forms allow-popups"
+              }
+            )
+          ]
+        }
+      )
     }
   );
 };
 
-// src/components/richtext/toolbar/ToolbarChain.tsx
-import * as React9 from "react";
+// src/hooks/chain-execute.ts
+import * as React2 from "react";
 
 // src/core/chain.ts
 var EditorChain = class {
@@ -735,11 +803,36 @@ var EditorChain = class {
   }
 };
 
-// src/components/richtext/toolbar/ToolbarChain.tsx
-import { Ban, Minus } from "lucide-react";
+// src/hooks/chain-execute.ts
+function useEditorChain() {
+  const { iframeRef } = useEditor();
+  const [chain, setChain] = React2.useState(null);
+  React2.useEffect(() => {
+    var _a;
+    const win = (_a = iframeRef.current) == null ? void 0 : _a.contentWindow;
+    if (win && !chain) {
+      setChain(new EditorChain(win));
+    }
+  }, [iframeRef, chain]);
+  const execute = React2.useCallback(
+    (action, ...args) => {
+      if (!chain) return;
+      const fn = chain[action];
+      if (typeof fn === "function") {
+        const result = fn.apply(chain, args);
+        if (result == null ? void 0 : result.run) result.run();
+      } else {
+        console.warn(`No chain method found for: ${action}`);
+      }
+    },
+    [chain]
+  );
+  return { chain, execute };
+}
 
-// src/components/ui/popover.tsx
-import * as PopoverPrimitive from "@radix-ui/react-popover";
+// src/components/ui/button.tsx
+import { Slot } from "@radix-ui/react-slot";
+import { cva } from "class-variance-authority";
 
 // src/lib/utils.ts
 import { clsx } from "clsx";
@@ -748,75 +841,8 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-// src/components/ui/popover.tsx
-import { jsx as jsx3 } from "react/jsx-runtime";
-function Popover(_a) {
-  var props = __objRest(_a, []);
-  return /* @__PURE__ */ jsx3(PopoverPrimitive.Root, __spreadValues({ "data-slot": "popover" }, props));
-}
-function PopoverTrigger(_a) {
-  var props = __objRest(_a, []);
-  return /* @__PURE__ */ jsx3(PopoverPrimitive.Trigger, __spreadValues({ "data-slot": "popover-trigger" }, props));
-}
-function PopoverContent(_a) {
-  var _b = _a, {
-    className,
-    align = "center",
-    sideOffset = 4
-  } = _b, props = __objRest(_b, [
-    "className",
-    "align",
-    "sideOffset"
-  ]);
-  return /* @__PURE__ */ jsx3(PopoverPrimitive.Portal, { children: /* @__PURE__ */ jsx3(
-    PopoverPrimitive.Content,
-    __spreadValues({
-      "data-slot": "popover-content",
-      align,
-      sideOffset,
-      className: cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border p-4 shadow-md outline-hidden",
-        className
-      )
-    }, props)
-  ) });
-}
-
-// src/components/ui/separator.tsx
-import * as SeparatorPrimitive from "@radix-ui/react-separator";
-import { jsx as jsx4 } from "react/jsx-runtime";
-function Separator(_a) {
-  var _b = _a, {
-    className,
-    orientation = "horizontal",
-    decorative = true
-  } = _b, props = __objRest(_b, [
-    "className",
-    "orientation",
-    "decorative"
-  ]);
-  return /* @__PURE__ */ jsx4(
-    SeparatorPrimitive.Root,
-    __spreadValues({
-      "data-slot": "separator",
-      decorative,
-      orientation,
-      className: cn(
-        "bg-border shrink-0 data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:h-full data-[orientation=vertical]:w-px",
-        className
-      )
-    }, props)
-  );
-}
-
-// src/components/richtext/ui/table-picker.tsx
-import { Table } from "lucide-react";
-import * as React3 from "react";
-
 // src/components/ui/button.tsx
-import { Slot } from "@radix-ui/react-slot";
-import { cva } from "class-variance-authority";
-import { jsx as jsx5 } from "react/jsx-runtime";
+import { jsx as jsx2 } from "react/jsx-runtime";
 var buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
@@ -859,7 +885,7 @@ function Button(_a) {
     "asChild"
   ]);
   const Comp = asChild ? Slot : "button";
-  return /* @__PURE__ */ jsx5(
+  return /* @__PURE__ */ jsx2(
     Comp,
     __spreadValues({
       "data-slot": "button",
@@ -868,16 +894,43 @@ function Button(_a) {
   );
 }
 
+// src/components/ui/separator.tsx
+import * as SeparatorPrimitive from "@radix-ui/react-separator";
+import { jsx as jsx3 } from "react/jsx-runtime";
+function Separator(_a) {
+  var _b = _a, {
+    className,
+    orientation = "horizontal",
+    decorative = true
+  } = _b, props = __objRest(_b, [
+    "className",
+    "orientation",
+    "decorative"
+  ]);
+  return /* @__PURE__ */ jsx3(
+    SeparatorPrimitive.Root,
+    __spreadValues({
+      "data-slot": "separator",
+      decorative,
+      orientation,
+      className: cn(
+        "bg-border shrink-0 data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:h-full data-[orientation=vertical]:w-px",
+        className
+      )
+    }, props)
+  );
+}
+
 // src/components/ui/tooltip.tsx
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { jsx as jsx6, jsxs } from "react/jsx-runtime";
+import { jsx as jsx4, jsxs as jsxs2 } from "react/jsx-runtime";
 function TooltipProvider(_a) {
   var _b = _a, {
     delayDuration = 0
   } = _b, props = __objRest(_b, [
     "delayDuration"
   ]);
-  return /* @__PURE__ */ jsx6(
+  return /* @__PURE__ */ jsx4(
     TooltipPrimitive.Provider,
     __spreadValues({
       "data-slot": "tooltip-provider",
@@ -887,11 +940,11 @@ function TooltipProvider(_a) {
 }
 function Tooltip(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ jsx6(TooltipProvider, { children: /* @__PURE__ */ jsx6(TooltipPrimitive.Root, __spreadValues({ "data-slot": "tooltip" }, props)) });
+  return /* @__PURE__ */ jsx4(TooltipProvider, { children: /* @__PURE__ */ jsx4(TooltipPrimitive.Root, __spreadValues({ "data-slot": "tooltip" }, props)) });
 }
 function TooltipTrigger(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ jsx6(TooltipPrimitive.Trigger, __spreadValues({ "data-slot": "tooltip-trigger" }, props));
+  return /* @__PURE__ */ jsx4(TooltipPrimitive.Trigger, __spreadValues({ "data-slot": "tooltip-trigger" }, props));
 }
 function TooltipContent(_a) {
   var _b = _a, {
@@ -903,7 +956,7 @@ function TooltipContent(_a) {
     "sideOffset",
     "children"
   ]);
-  return /* @__PURE__ */ jsx6(TooltipPrimitive.Portal, { children: /* @__PURE__ */ jsxs(
+  return /* @__PURE__ */ jsx4(TooltipPrimitive.Portal, { children: /* @__PURE__ */ jsxs2(
     TooltipPrimitive.Content,
     __spreadProps(__spreadValues({
       "data-slot": "tooltip-content",
@@ -915,30 +968,44 @@ function TooltipContent(_a) {
     }, props), {
       children: [
         children,
-        /* @__PURE__ */ jsx6(TooltipPrimitive.Arrow, { className: "bg-foreground fill-foreground z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" })
+        /* @__PURE__ */ jsx4(TooltipPrimitive.Arrow, { className: "bg-foreground fill-foreground z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" })
       ]
     })
   ) });
 }
 
 // src/components/richtext/toolbar/toolbar.tsx
-import * as React2 from "react";
-import { jsx as jsx7, jsxs as jsxs2 } from "react/jsx-runtime";
-var ToolbarWrapper = React2.forwardRef(
+import * as React3 from "react";
+import { jsx as jsx5, jsxs as jsxs3 } from "react/jsx-runtime";
+var ToolbarWrapper = React3.forwardRef(
   (_a, ref) => {
     var _b = _a, { children, className } = _b, props = __objRest(_b, ["children", "className"]);
-    return /* @__PURE__ */ jsx7("div", __spreadProps(__spreadValues({ ref, className: cn("flex items-center", className) }, props), { children }));
-  }
-);
-ToolbarWrapper.displayName = "ToolbarWrapper";
-var ToolbarGroup = React2.forwardRef(
-  (_a, ref) => {
-    var _b = _a, { children, className } = _b, props = __objRest(_b, ["children", "className"]);
-    return /* @__PURE__ */ jsx7(
+    return /* @__PURE__ */ jsx5(
       "div",
       __spreadProps(__spreadValues({
         ref,
-        className: cn("flex items-center gap-1", className)
+        className: cn(
+          "flex items-center transform transition ease-in-out duration-300",
+          className
+        )
+      }, props), {
+        children
+      })
+    );
+  }
+);
+ToolbarWrapper.displayName = "ToolbarWrapper";
+var ToolbarGroup = React3.forwardRef(
+  (_a, ref) => {
+    var _b = _a, { children, className } = _b, props = __objRest(_b, ["children", "className"]);
+    return /* @__PURE__ */ jsx5(
+      "div",
+      __spreadProps(__spreadValues({
+        ref,
+        className: cn(
+          "flex items-center gap-1 transform transition ease-in-out duration-300",
+          className
+        )
       }, props), {
         children
       })
@@ -949,7 +1016,7 @@ ToolbarGroup.displayName = "ToolbarGroup";
 var ToolbarButtonSeparator = ({
   orientation = "vertical"
 }) => {
-  return /* @__PURE__ */ jsx7(
+  return /* @__PURE__ */ jsx5(
     Separator,
     {
       orientation,
@@ -959,7 +1026,7 @@ var ToolbarButtonSeparator = ({
     }
   );
 };
-var ToolbarButton = React2.forwardRef(
+var ToolbarButton = React3.forwardRef(
   (_a, ref) => {
     var _b = _a, {
       children,
@@ -982,7 +1049,7 @@ var ToolbarButton = React2.forwardRef(
       xs: { style: "px-2 py-0.5 rounded", size: "icon-xs" }
     };
     const { style, size } = sizeClasses[toolButtonSize];
-    const button = /* @__PURE__ */ jsx7(
+    const button = /* @__PURE__ */ jsx5(
       Button,
       __spreadProps(__spreadValues({
         size,
@@ -1001,9 +1068,9 @@ var ToolbarButton = React2.forwardRef(
       })
     );
     if (!tooltip) return button;
-    return /* @__PURE__ */ jsx7(TooltipProvider, { delayDuration: 250, children: /* @__PURE__ */ jsxs2(Tooltip, { children: [
-      /* @__PURE__ */ jsx7(TooltipTrigger, { asChild: true, children: button }),
-      /* @__PURE__ */ jsx7(
+    return /* @__PURE__ */ jsx5(TooltipProvider, { delayDuration: 250, children: /* @__PURE__ */ jsxs3(Tooltip, { children: [
+      /* @__PURE__ */ jsx5(TooltipTrigger, { asChild: true, children: button }),
+      /* @__PURE__ */ jsx5(
         TooltipContent,
         {
           side: "top",
@@ -1017,16 +1084,188 @@ var ToolbarButton = React2.forwardRef(
 );
 ToolbarButton.displayName = "ToolbarButton";
 
+// src/components/richtext/ui/history.tsx
+import { Redo2, Undo2 } from "lucide-react";
+import { jsx as jsx6, jsxs as jsxs4 } from "react/jsx-runtime";
+var HistorySection = ({
+  ctx,
+  size = "sm"
+}) => {
+  const { execute } = useEditorChain();
+  return /* @__PURE__ */ jsxs4(ToolbarGroup, { children: [
+    /* @__PURE__ */ jsx6(
+      ToolbarButton,
+      {
+        tooltip: "Undo",
+        disabled: !ctx.canUndo,
+        onClick: () => execute("undo"),
+        toolButtonSize: size,
+        className: "rounded",
+        children: /* @__PURE__ */ jsx6(Undo2, {})
+      }
+    ),
+    /* @__PURE__ */ jsx6(
+      ToolbarButton,
+      {
+        tooltip: "Redo",
+        toolButtonSize: size,
+        disabled: !ctx.canRedo,
+        onClick: () => execute("redo"),
+        className: "rounded",
+        children: /* @__PURE__ */ jsx6(Redo2, {})
+      }
+    )
+  ] });
+};
+
+// src/components/richtext/ui/indent-outdent.tsx
+import { jsx as jsx7, jsxs as jsxs5 } from "react/jsx-runtime";
+var IndentOutdentSection = ({
+  ctx,
+  size
+}) => {
+  const { execute } = useEditorChain();
+  return /* @__PURE__ */ jsxs5(ToolbarGroup, { children: [
+    /* @__PURE__ */ jsx7(
+      ToolbarButton,
+      {
+        toolButtonSize: size,
+        tooltip: "Indent",
+        disabled: ctx == null ? void 0 : ctx.isIndented,
+        onClick: () => execute("indent"),
+        children: /* @__PURE__ */ jsx7(Indent, {})
+      }
+    ),
+    /* @__PURE__ */ jsx7(
+      ToolbarButton,
+      {
+        toolButtonSize: size,
+        tooltip: "Outdent",
+        disabled: !(ctx == null ? void 0 : ctx.isIndented),
+        onClick: () => execute("outdent"),
+        children: /* @__PURE__ */ jsx7(Outdent, {})
+      }
+    )
+  ] });
+};
+var Indent = (_a) => {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ jsxs5(
+    "svg",
+    __spreadProps(__spreadValues({
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 16 16"
+    }, props), {
+      fill: "currentColor",
+      children: [
+        /* @__PURE__ */ jsx7("path", { d: "M1.75 2a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ jsx7("path", { d: "M8.75 5.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ jsx7("path", { d: "M8 9.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75" }),
+        /* @__PURE__ */ jsx7("path", { d: "M1.75 12.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ jsx7("path", { d: "M1 10.407c0 .473.55.755.96.493l3.765-2.408a.578.578 0 0 0 0-.985l-3.765-2.407c-.41-.262-.96.02-.96.493z" })
+      ]
+    })
+  );
+};
+var Outdent = (_a) => {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ jsxs5(
+    "svg",
+    __spreadProps(__spreadValues({
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 16 16"
+    }, props), {
+      fill: "currentColor",
+      children: [
+        /* @__PURE__ */ jsx7("path", { d: "M1.75 2a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ jsx7("path", { d: "M8.75 5.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ jsx7("path", { d: "M8 9.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75" }),
+        /* @__PURE__ */ jsx7("path", { d: "M1.75 12.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ jsx7("path", { d: "M6 10.407c0 .473-.55.755-.96.493l-3.765-2.408a.578.578 0 0 1 0-.985l3.765-2.407c.41-.262.96.02.96.493z" })
+      ]
+    })
+  );
+};
+
+// src/components/richtext/ui/list-selector.tsx
+import { List, ListOrdered } from "lucide-react";
+import { jsx as jsx8, jsxs as jsxs6 } from "react/jsx-runtime";
+var ListSelectorSection = ({
+  ctx,
+  size = "sm"
+}) => {
+  const { execute } = useEditorChain();
+  return /* @__PURE__ */ jsxs6(ToolbarGroup, { children: [
+    /* @__PURE__ */ jsx8(
+      ToolbarButton,
+      {
+        onClick: () => execute("bulletList"),
+        active: ctx.unorderedList,
+        toolButtonSize: size,
+        tooltip: "Unordered List",
+        children: /* @__PURE__ */ jsx8(List, {})
+      }
+    ),
+    /* @__PURE__ */ jsx8(
+      ToolbarButton,
+      {
+        onClick: () => execute("orderedList"),
+        active: ctx.orderedList,
+        toolButtonSize: size,
+        tooltip: "Ordered List",
+        children: /* @__PURE__ */ jsx8(ListOrdered, {})
+      }
+    )
+  ] });
+};
+
+// src/components/ui/popover.tsx
+import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { jsx as jsx9 } from "react/jsx-runtime";
+function Popover(_a) {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ jsx9(PopoverPrimitive.Root, __spreadValues({ "data-slot": "popover" }, props));
+}
+function PopoverTrigger(_a) {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ jsx9(PopoverPrimitive.Trigger, __spreadValues({ "data-slot": "popover-trigger" }, props));
+}
+function PopoverContent(_a) {
+  var _b = _a, {
+    className,
+    align = "center",
+    sideOffset = 4
+  } = _b, props = __objRest(_b, [
+    "className",
+    "align",
+    "sideOffset"
+  ]);
+  return /* @__PURE__ */ jsx9(PopoverPrimitive.Portal, { children: /* @__PURE__ */ jsx9(
+    PopoverPrimitive.Content,
+    __spreadValues({
+      "data-slot": "popover-content",
+      align,
+      sideOffset,
+      className: cn(
+        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border p-4 shadow-md outline-hidden",
+        className
+      )
+    }, props)
+  ) });
+}
+
 // src/components/richtext/ui/table-picker.tsx
-import { jsx as jsx8, jsxs as jsxs3 } from "react/jsx-runtime";
-var TablePicker = React3.forwardRef((_a, ref) => {
+import { Table } from "lucide-react";
+import * as React4 from "react";
+import { jsx as jsx10, jsxs as jsxs7 } from "react/jsx-runtime";
+var TablePicker = React4.forwardRef((_a, ref) => {
   var _b = _a, { onSelect } = _b, buttonProps = __objRest(_b, ["onSelect"]);
-  const [open, setOpen] = React3.useState(false);
-  const [table, setTable] = React3.useState({ rows: 2, cols: 2 });
+  const [open, setOpen] = React4.useState(false);
+  const [table, setTable] = React4.useState({ rows: 2, cols: 2 });
   const maxRows = 10;
   const maxCols = 10;
-  return /* @__PURE__ */ jsxs3(Popover, { open, onOpenChange: setOpen, children: [
-    /* @__PURE__ */ jsx8(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsx8(
+  return /* @__PURE__ */ jsxs7(Popover, { open, onOpenChange: setOpen, children: [
+    /* @__PURE__ */ jsx10(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsx10(
       ToolbarButton,
       __spreadProps(__spreadValues({
         ref,
@@ -1034,13 +1273,13 @@ var TablePicker = React3.forwardRef((_a, ref) => {
         tooltip: "Insert Table",
         "data-active": open
       }, buttonProps), {
-        children: /* @__PURE__ */ jsx8(Table, {})
+        children: /* @__PURE__ */ jsx10(Table, {})
       })
     ) }),
-    /* @__PURE__ */ jsxs3(PopoverContent, { children: [
-      Array.from({ length: maxRows }).map((_, r) => /* @__PURE__ */ jsx8("div", { className: "flex space-y-0.5 space-x-0.5 mx-auto w-full", children: Array.from({ length: maxCols }).map((_2, c) => {
+    /* @__PURE__ */ jsxs7(PopoverContent, { children: [
+      Array.from({ length: maxRows }).map((_, r) => /* @__PURE__ */ jsx10("div", { className: "flex space-y-0.5 space-x-0.5 mx-auto w-full", children: Array.from({ length: maxCols }).map((_2, c) => {
         const active = r <= table.rows && c <= table.cols;
-        return /* @__PURE__ */ jsx8(
+        return /* @__PURE__ */ jsx10(
           "div",
           {
             onMouseEnter: () => setTable({ rows: r, cols: c }),
@@ -1054,8 +1293,8 @@ var TablePicker = React3.forwardRef((_a, ref) => {
           c
         );
       }) }, r)),
-      /* @__PURE__ */ jsx8(Separator, { className: "w-full" }),
-      /* @__PURE__ */ jsxs3("div", { className: "text-xs text-muted-foreground mt-2", children: [
+      /* @__PURE__ */ jsx10(Separator, { className: "w-full" }),
+      /* @__PURE__ */ jsxs7("div", { className: "text-xs text-muted-foreground mt-2", children: [
         table.rows + 1,
         " \xD7 ",
         table.cols + 1
@@ -1065,87 +1304,327 @@ var TablePicker = React3.forwardRef((_a, ref) => {
 });
 TablePicker.displayName = "TablePicker";
 
-// src/hooks/chain-execute.ts
-import * as React4 from "react";
-function useEditorChain() {
-  const { iframeRef } = useEditor();
-  const [chain, setChain] = React4.useState(null);
-  React4.useEffect(() => {
-    var _a;
-    const win = (_a = iframeRef.current) == null ? void 0 : _a.contentWindow;
-    if (win && !chain) {
-      setChain(new EditorChain(win));
-    }
-  }, [iframeRef, chain]);
-  const execute = React4.useCallback(
-    (action, ...args) => {
-      if (!chain) return;
-      const fn = chain[action];
-      if (typeof fn === "function") {
-        const result = fn.apply(chain, args);
-        if (result == null ? void 0 : result.run) result.run();
-      } else {
-        console.warn(`No chain method found for: ${action}`);
-      }
-    },
-    [chain]
+// src/components/richtext/ui/text-aligner.tsx
+import * as React5 from "react";
+
+// src/components/ui/dropdown-menu.tsx
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
+import { jsx as jsx11, jsxs as jsxs8 } from "react/jsx-runtime";
+function DropdownMenu(_a) {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ jsx11(DropdownMenuPrimitive.Root, __spreadValues({ "data-slot": "dropdown-menu" }, props));
+}
+function DropdownMenuTrigger(_a) {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ jsx11(
+    DropdownMenuPrimitive.Trigger,
+    __spreadValues({
+      "data-slot": "dropdown-menu-trigger"
+    }, props)
   );
-  return { chain, execute };
+}
+function DropdownMenuContent(_a) {
+  var _b = _a, {
+    className,
+    sideOffset = 4
+  } = _b, props = __objRest(_b, [
+    "className",
+    "sideOffset"
+  ]);
+  return /* @__PURE__ */ jsx11(DropdownMenuPrimitive.Portal, { children: /* @__PURE__ */ jsx11(
+    DropdownMenuPrimitive.Content,
+    __spreadValues({
+      "data-slot": "dropdown-menu-content",
+      sideOffset,
+      className: cn(
+        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-0 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded border p-1 shadow-md",
+        className
+      )
+    }, props)
+  ) });
+}
+function DropdownMenuItem(_a) {
+  var _b = _a, {
+    className,
+    inset,
+    variant = "default"
+  } = _b, props = __objRest(_b, [
+    "className",
+    "inset",
+    "variant"
+  ]);
+  return /* @__PURE__ */ jsx11(
+    DropdownMenuPrimitive.Item,
+    __spreadValues({
+      "data-slot": "dropdown-menu-item",
+      "data-inset": inset,
+      "data-variant": variant,
+      className: cn(
+        "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )
+    }, props)
+  );
 }
 
-// src/components/richtext/ui/history.tsx
-import { Redo2, Undo2 } from "lucide-react";
-import { jsx as jsx9, jsxs as jsxs4 } from "react/jsx-runtime";
-var HistorySection = ({
-  ctx,
-  size = "sm"
-}) => {
+// src/components/richtext/ui/text-aligner.tsx
+import { TextAlignStart, TextAlignCenter, TextAlignEnd } from "lucide-react";
+import { jsx as jsx12, jsxs as jsxs9 } from "react/jsx-runtime";
+var TextAlignerSection = (_a) => {
+  var _b = _a, {
+    size = "sm",
+    ctx
+  } = _b, props = __objRest(_b, [
+    "size",
+    "ctx"
+  ]);
+  var _a2;
+  const [_open, _setOpen] = React5.useState(false);
   const { execute } = useEditorChain();
-  return /* @__PURE__ */ jsxs4(ToolbarGroup, { children: [
-    /* @__PURE__ */ jsx9(
+  const alignOptions = [
+    {
+      cmd: "alignLeft",
+      tooltip: "Align Left",
+      icon: /* @__PURE__ */ jsx12(TextAlignStart, { className: "w-4 h-4" }),
+      active: ctx == null ? void 0 : ctx.justifyLeft
+    },
+    {
+      cmd: "alignCenter",
+      tooltip: "Align Center",
+      icon: /* @__PURE__ */ jsx12(TextAlignCenter, { className: "w-4 h-4" }),
+      active: ctx == null ? void 0 : ctx.justifyCenter
+    },
+    {
+      cmd: "alignRight",
+      tooltip: "Align Right",
+      icon: /* @__PURE__ */ jsx12(TextAlignEnd, { className: "w-4 h-4" }),
+      active: ctx == null ? void 0 : ctx.justifyRight
+    }
+  ];
+  const activeAlign = ((_a2 = alignOptions.find((a) => a.active)) == null ? void 0 : _a2.icon) || /* @__PURE__ */ jsx12(TextAlignStart, { className: "w-4 h-4" });
+  return /* @__PURE__ */ jsxs9(DropdownMenu, { open: _open, onOpenChange: _setOpen, children: [
+    /* @__PURE__ */ jsx12(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx12(
       ToolbarButton,
-      {
-        tooltip: "Undo",
-        disabled: !ctx.canUndo,
-        onClick: () => execute("undo"),
+      __spreadProps(__spreadValues({}, props), {
+        tooltip: "Text Alignment",
+        "data-active": _open,
         toolButtonSize: size,
-        className: "rounded",
-        children: /* @__PURE__ */ jsx9(Undo2, {})
-      }
-    ),
-    /* @__PURE__ */ jsx9(
-      ToolbarButton,
+        children: activeAlign
+      })
+    ) }),
+    /* @__PURE__ */ jsx12(
+      DropdownMenuContent,
       {
-        tooltip: "Redo",
-        toolButtonSize: size,
-        disabled: !ctx.canRedo,
-        onClick: () => execute("redo"),
-        className: "rounded",
-        children: /* @__PURE__ */ jsx9(Redo2, {})
+        align: "center",
+        className: "flex gap-1 p-2 min-w-0 bg-background/95 backdrop-blur-md rounded shadow-sm border",
+        children: alignOptions.map((opt) => /* @__PURE__ */ jsx12(
+          ToolbarButton,
+          {
+            tooltip: opt.tooltip,
+            toolButtonSize: "sm",
+            active: opt.active,
+            onClick: () => {
+              execute(opt.cmd);
+              _setOpen(!_open);
+            },
+            children: opt.icon
+          },
+          opt.cmd
+        ))
       }
     )
   ] });
 };
 
-// src/components/richtext/ui/text-style.tsx
+// src/components/richtext/ui/text-format.tsx
 import * as React6 from "react";
+import {
+  Check,
+  ChevronDown,
+  Code,
+  Heading1,
+  Heading2,
+  Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
+  Pilcrow,
+  Quote
+} from "lucide-react";
+import { jsx as jsx13, jsxs as jsxs10 } from "react/jsx-runtime";
+var allFormats = [
+  {
+    type: "heading",
+    cmd: "heading",
+    args: [1],
+    tooltip: "Heading 1",
+    icon: /* @__PURE__ */ jsx13(Heading1, {}),
+    activeKey: "isHeading1",
+    style: "text-3xl font-bold leading-tight tracking-tight text-foreground"
+  },
+  {
+    type: "heading",
+    cmd: "heading",
+    args: [2],
+    tooltip: "Heading 2",
+    icon: /* @__PURE__ */ jsx13(Heading2, {}),
+    activeKey: "isHeading2",
+    style: "text-2xl font-semibold leading-snug tracking-tight text-foreground"
+  },
+  {
+    type: "heading",
+    cmd: "heading",
+    args: [3],
+    tooltip: "Heading 3",
+    icon: /* @__PURE__ */ jsx13(Heading3, {}),
+    activeKey: "isHeading3",
+    style: "text-xl font-semibold leading-snug text-foreground"
+  },
+  {
+    type: "heading",
+    cmd: "heading",
+    args: [4],
+    tooltip: "Heading 4",
+    icon: /* @__PURE__ */ jsx13(Heading4, {}),
+    activeKey: "isHeading4",
+    style: "text-lg font-medium leading-relaxed text-foreground"
+  },
+  {
+    type: "heading",
+    cmd: "heading",
+    args: [5],
+    tooltip: "Heading 5",
+    icon: /* @__PURE__ */ jsx13(Heading5, {}),
+    activeKey: "isHeading5",
+    style: "text-base font-medium leading-relaxed text-foreground"
+  },
+  {
+    type: "heading",
+    cmd: "heading",
+    args: [6],
+    tooltip: "Heading 6",
+    icon: /* @__PURE__ */ jsx13(Heading6, {}),
+    activeKey: "isHeading6",
+    style: "text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+  },
+  {
+    type: "paragraph",
+    cmd: "paragraph",
+    tooltip: "Paragraph",
+    icon: /* @__PURE__ */ jsx13(Pilcrow, {}),
+    activeKey: "isParagraph",
+    style: "text-base leading-relaxed text-muted-foreground max-w-prose truncate"
+  },
+  {
+    type: "blockquote",
+    cmd: "quote",
+    tooltip: "Blockquote",
+    icon: /* @__PURE__ */ jsx13(Quote, {}),
+    activeKey: "isBlockquote",
+    style: "text-base italic border-l-2 border-muted pl-3 text-muted-foreground leading-relaxed"
+  },
+  {
+    type: "code",
+    cmd: "codeBlock",
+    tooltip: "Code Block",
+    icon: /* @__PURE__ */ jsx13(Code, {}),
+    activeKey: "isCodeBlock",
+    style: "text-sm font-mono bg-muted rounded px-2 py-1 text-foreground truncate"
+  }
+];
+var TextFormatSection = ({
+  ctx,
+  format = {
+    heading: [1, 2, 3],
+    code: false,
+    blockquote: false,
+    paragraph: true
+  },
+  size = "sm"
+}) => {
+  const { execute } = useEditorChain();
+  const visibleFormats = React6.useMemo(() => {
+    return allFormats.filter((btn) => {
+      var _a, _b;
+      switch (btn.type) {
+        case "heading":
+          return (_b = format.heading) == null ? void 0 : _b.includes((_a = btn.args) == null ? void 0 : _a[0]);
+        case "paragraph":
+          return !!format.paragraph;
+        case "blockquote":
+          return !!format.blockquote;
+        case "code":
+          return !!format.code;
+        default:
+          return false;
+      }
+    });
+  }, [format]);
+  const currentActive = visibleFormats.find(
+    (btn) => ctx[btn.activeKey]
+  );
+  const currentLabel = (currentActive == null ? void 0 : currentActive.tooltip) || "Format";
+  const sizeClasses = {
+    sm: "px-2 h-8 text-sm gap-1.5",
+    md: "px-3 h-9 text-base gap-2",
+    xs: "px-1.5 h-7 text-xs gap-1"
+  };
+  return /* @__PURE__ */ jsxs10(DropdownMenu, { children: [
+    /* @__PURE__ */ jsxs10(Tooltip, { children: [
+      /* @__PURE__ */ jsx13(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsxs10(
+        DropdownMenuTrigger,
+        {
+          className: `flex items-center justify-between gap-1 border border-border rounded ${sizeClasses[size]} text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring focus:outline-none min-w-[6rem]`,
+          children: [
+            currentLabel,
+            /* @__PURE__ */ jsx13(ChevronDown, { className: "w-4 h-4 opacity-70", strokeWidth: 2 })
+          ]
+        }
+      ) }),
+      /* @__PURE__ */ jsx13(TooltipContent, { side: "bottom", children: "Select Text format" })
+    ] }),
+    /* @__PURE__ */ jsx13(DropdownMenuContent, { align: "center", className: "min-w-10 space-y-0.5", children: visibleFormats.map((btn) => {
+      const active = Boolean(ctx[btn.activeKey]);
+      return /* @__PURE__ */ jsxs10(
+        DropdownMenuItem,
+        {
+          onClick: () => execute(btn.cmd, ...btn.args || []),
+          "data-active": active,
+          className: `flex hover:bg-muted/70 data-[active=true]:text-accent-foreground data-[active=true]:bg-accent items-center justify-between gap-2 px-2 py-1.5 cursor-pointer transition-colors ease-in-out duration-150`,
+          children: [
+            /* @__PURE__ */ jsxs10("span", { className: cn("flex items-center gap-2", btn == null ? void 0 : btn.style), children: [
+              btn.icon,
+              btn.tooltip
+            ] }),
+            active && /* @__PURE__ */ jsx13(Check, { className: "w-4 h-4 text-blue-500" })
+          ]
+        },
+        btn.tooltip
+      );
+    }) })
+  ] });
+};
+
+// src/components/richtext/ui/text-style.tsx
+import * as React8 from "react";
 import { Bold, Italic, Palette, Underline } from "lucide-react";
 
 // src/components/richtext/ui/color-picker.tsx
-import * as React5 from "react";
+import * as React7 from "react";
 import { SketchPicker } from "react-color";
-import { Check } from "lucide-react";
+import { Check as Check2 } from "lucide-react";
 
 // src/components/ui/tabs.tsx
 import * as TabsPrimitive from "@radix-ui/react-tabs";
-import { jsx as jsx10 } from "react/jsx-runtime";
+import { jsx as jsx14 } from "react/jsx-runtime";
 function Tabs(_a) {
   var _b = _a, {
     className
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ jsx10(
+  return /* @__PURE__ */ jsx14(
     TabsPrimitive.Root,
     __spreadValues({
       "data-slot": "tabs",
@@ -1159,7 +1638,7 @@ function TabsList(_a) {
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ jsx10(
+  return /* @__PURE__ */ jsx14(
     TabsPrimitive.List,
     __spreadValues({
       "data-slot": "tabs-list",
@@ -1176,7 +1655,7 @@ function TabsTrigger(_a) {
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ jsx10(
+  return /* @__PURE__ */ jsx14(
     TabsPrimitive.Trigger,
     __spreadValues({
       "data-slot": "tabs-trigger",
@@ -1193,7 +1672,7 @@ function TabsContent(_a) {
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ jsx10(
+  return /* @__PURE__ */ jsx14(
     TabsPrimitive.Content,
     __spreadValues({
       "data-slot": "tabs-content",
@@ -1203,8 +1682,8 @@ function TabsContent(_a) {
 }
 
 // src/components/richtext/ui/color-picker.tsx
-import { jsx as jsx11, jsxs as jsxs5 } from "react/jsx-runtime";
-var ColorHighlighter = React5.forwardRef(
+import { jsx as jsx15, jsxs as jsxs11 } from "react/jsx-runtime";
+var ColorHighlighter = React7.forwardRef(
   (_a, ref) => {
     var _b = _a, {
       color,
@@ -1225,9 +1704,9 @@ var ColorHighlighter = React5.forwardRef(
       "icon",
       "size"
     ]);
-    const [isOpen, setIsOpen] = React5.useState(false);
-    const [tempColor, setTempColor] = React5.useState(color || "#000000");
-    const IconComponent = icon || Check;
+    const [isOpen, setIsOpen] = React7.useState(false);
+    const [tempColor, setTempColor] = React7.useState(color || "#000000");
+    const IconComponent = icon || Check2;
     const handleChange = (clr) => {
       setTempColor(clr.hex);
     };
@@ -1235,8 +1714,8 @@ var ColorHighlighter = React5.forwardRef(
       setTempColor(clr.hex);
       onChange == null ? void 0 : onChange(clr.hex);
     };
-    return /* @__PURE__ */ jsxs5(Popover, { open: isOpen, onOpenChange: setIsOpen, children: [
-      /* @__PURE__ */ jsx11(
+    return /* @__PURE__ */ jsxs11(Popover, { open: isOpen, onOpenChange: setIsOpen, children: [
+      /* @__PURE__ */ jsx15(
         PopoverTrigger,
         {
           className: cn(
@@ -1246,22 +1725,22 @@ var ColorHighlighter = React5.forwardRef(
           ref,
           disabled,
           asChild: true,
-          children: /* @__PURE__ */ jsx11(ToolbarButton, __spreadProps(__spreadValues({ toolButtonSize: size, tooltip: "Color" }, props), { children: /* @__PURE__ */ jsx11(IconComponent, { color: "currentColor" }) }))
+          children: /* @__PURE__ */ jsx15(ToolbarButton, __spreadProps(__spreadValues({ toolButtonSize: size, tooltip: "Color" }, props), { children: /* @__PURE__ */ jsx15(IconComponent, { color: "currentColor" }) }))
         }
       ),
-      /* @__PURE__ */ jsx11(
+      /* @__PURE__ */ jsx15(
         PopoverContent,
         {
           className: "p-2 w-[260px] bg-background shadow-lg border border-border rounded",
           align: "end",
-          children: /* @__PURE__ */ jsxs5(
+          children: /* @__PURE__ */ jsxs11(
             Tabs,
             {
               value: isBack,
               onValueChange: (value) => onChangeIsBackground == null ? void 0 : onChangeIsBackground(value),
               children: [
-                /* @__PURE__ */ jsxs5(TabsList, { className: "w-full rounded bg-accent", children: [
-                  /* @__PURE__ */ jsx11(
+                /* @__PURE__ */ jsxs11(TabsList, { className: "w-full rounded bg-accent", children: [
+                  /* @__PURE__ */ jsx15(
                     TabsTrigger,
                     {
                       value: "text",
@@ -1269,7 +1748,7 @@ var ColorHighlighter = React5.forwardRef(
                       children: "Text"
                     }
                   ),
-                  /* @__PURE__ */ jsx11(
+                  /* @__PURE__ */ jsx15(
                     TabsTrigger,
                     {
                       value: "background",
@@ -1278,7 +1757,7 @@ var ColorHighlighter = React5.forwardRef(
                     }
                   )
                 ] }),
-                /* @__PURE__ */ jsx11(TabsContent, { value: "text", children: /* @__PURE__ */ jsx11(
+                /* @__PURE__ */ jsx15(TabsContent, { value: "text", children: /* @__PURE__ */ jsx15(
                   Picker,
                   {
                     handleChange,
@@ -1286,7 +1765,7 @@ var ColorHighlighter = React5.forwardRef(
                     color: tempColor
                   }
                 ) }),
-                /* @__PURE__ */ jsx11(TabsContent, { value: "background", children: /* @__PURE__ */ jsx11(
+                /* @__PURE__ */ jsx15(TabsContent, { value: "background", children: /* @__PURE__ */ jsx15(
                   Picker,
                   {
                     handleChange,
@@ -1308,7 +1787,7 @@ function Picker({
   handleComplete,
   color
 }) {
-  return /* @__PURE__ */ jsx11(
+  return /* @__PURE__ */ jsx15(
     SketchPicker,
     {
       color,
@@ -1373,13 +1852,13 @@ function Picker({
 }
 
 // src/components/richtext/ui/text-style.tsx
-import { jsx as jsx12, jsxs as jsxs6 } from "react/jsx-runtime";
+import { jsx as jsx16, jsxs as jsxs12 } from "react/jsx-runtime";
 var styleButtons = [
   {
     type: "bold",
     cmd: "bold",
     tooltip: "Bold",
-    icon: /* @__PURE__ */ jsx12(Bold, {}),
+    icon: /* @__PURE__ */ jsx16(Bold, {}),
     activeKey: "bold",
     action_type: "button"
   },
@@ -1387,7 +1866,7 @@ var styleButtons = [
     type: "italic",
     cmd: "italic",
     tooltip: "Italic",
-    icon: /* @__PURE__ */ jsx12(Italic, {}),
+    icon: /* @__PURE__ */ jsx16(Italic, {}),
     activeKey: "italic",
     action_type: "button"
   },
@@ -1395,7 +1874,7 @@ var styleButtons = [
     type: "underline",
     cmd: "underline",
     tooltip: "Underline",
-    icon: /* @__PURE__ */ jsx12(Underline, {}),
+    icon: /* @__PURE__ */ jsx16(Underline, {}),
     activeKey: "underline",
     action_type: "button"
   }
@@ -1405,14 +1884,14 @@ var StyleFormatSection = ({
   size = "sm",
   highlighter = true
 }) => {
-  const [isBackground, setIsBackground] = React6.useState("text");
+  const [isBackground, setIsBackground] = React8.useState("text");
   const { execute } = useEditorChain();
   const handleUpdateColor = (color) => {
     const cmd = isBackground === "text" ? "color" : "highlight";
     execute(cmd, color);
   };
-  return /* @__PURE__ */ jsxs6(ToolbarGroup, { children: [
-    styleButtons.map((btn) => /* @__PURE__ */ jsx12(
+  return /* @__PURE__ */ jsxs12(ToolbarGroup, { children: [
+    styleButtons.map((btn) => /* @__PURE__ */ jsx16(
       ToolbarButton,
       {
         tooltip: btn.tooltip,
@@ -1423,7 +1902,7 @@ var StyleFormatSection = ({
       },
       btn.type
     )),
-    highlighter && /* @__PURE__ */ jsx12(
+    highlighter && /* @__PURE__ */ jsx16(
       ColorHighlighter,
       {
         size: "xs",
@@ -1437,405 +1916,61 @@ var StyleFormatSection = ({
   ] });
 };
 
-// src/components/richtext/ui/text-format.tsx
-import * as React7 from "react";
-import {
-  Check as Check2,
-  ChevronDown,
-  Code,
-  Heading1,
-  Heading2,
-  Heading3,
-  Heading4,
-  Heading5,
-  Heading6,
-  Pilcrow,
-  Quote
-} from "lucide-react";
-
-// src/components/ui/dropdown-menu.tsx
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
-import { jsx as jsx13, jsxs as jsxs7 } from "react/jsx-runtime";
-function DropdownMenu(_a) {
-  var props = __objRest(_a, []);
-  return /* @__PURE__ */ jsx13(DropdownMenuPrimitive.Root, __spreadValues({ "data-slot": "dropdown-menu" }, props));
-}
-function DropdownMenuTrigger(_a) {
-  var props = __objRest(_a, []);
-  return /* @__PURE__ */ jsx13(
-    DropdownMenuPrimitive.Trigger,
+// src/components/ui/skeleton.tsx
+import { jsx as jsx17 } from "react/jsx-runtime";
+function Skeleton(_a) {
+  var _b = _a, { className } = _b, props = __objRest(_b, ["className"]);
+  return /* @__PURE__ */ jsx17(
+    "div",
     __spreadValues({
-      "data-slot": "dropdown-menu-trigger"
-    }, props)
-  );
-}
-function DropdownMenuContent(_a) {
-  var _b = _a, {
-    className,
-    sideOffset = 4
-  } = _b, props = __objRest(_b, [
-    "className",
-    "sideOffset"
-  ]);
-  return /* @__PURE__ */ jsx13(DropdownMenuPrimitive.Portal, { children: /* @__PURE__ */ jsx13(
-    DropdownMenuPrimitive.Content,
-    __spreadValues({
-      "data-slot": "dropdown-menu-content",
-      sideOffset,
-      className: cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-0 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded border p-1 shadow-md",
-        className
-      )
-    }, props)
-  ) });
-}
-function DropdownMenuItem(_a) {
-  var _b = _a, {
-    className,
-    inset,
-    variant = "default"
-  } = _b, props = __objRest(_b, [
-    "className",
-    "inset",
-    "variant"
-  ]);
-  return /* @__PURE__ */ jsx13(
-    DropdownMenuPrimitive.Item,
-    __spreadValues({
-      "data-slot": "dropdown-menu-item",
-      "data-inset": inset,
-      "data-variant": variant,
-      className: cn(
-        "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )
+      "data-slot": "skeleton",
+      className: cn("bg-accent animate-pulse rounded-md", className)
     }, props)
   );
 }
 
-// src/components/richtext/ui/text-format.tsx
-import { jsx as jsx14, jsxs as jsxs8 } from "react/jsx-runtime";
-var allFormats = [
-  {
-    type: "heading",
-    cmd: "heading",
-    args: [1],
-    tooltip: "Heading 1",
-    icon: /* @__PURE__ */ jsx14(Heading1, {}),
-    activeKey: "isHeading1",
-    style: "text-3xl font-bold leading-tight tracking-tight text-foreground"
-  },
-  {
-    type: "heading",
-    cmd: "heading",
-    args: [2],
-    tooltip: "Heading 2",
-    icon: /* @__PURE__ */ jsx14(Heading2, {}),
-    activeKey: "isHeading2",
-    style: "text-2xl font-semibold leading-snug tracking-tight text-foreground"
-  },
-  {
-    type: "heading",
-    cmd: "heading",
-    args: [3],
-    tooltip: "Heading 3",
-    icon: /* @__PURE__ */ jsx14(Heading3, {}),
-    activeKey: "isHeading3",
-    style: "text-xl font-semibold leading-snug text-foreground"
-  },
-  {
-    type: "heading",
-    cmd: "heading",
-    args: [4],
-    tooltip: "Heading 4",
-    icon: /* @__PURE__ */ jsx14(Heading4, {}),
-    activeKey: "isHeading4",
-    style: "text-lg font-medium leading-relaxed text-foreground"
-  },
-  {
-    type: "heading",
-    cmd: "heading",
-    args: [5],
-    tooltip: "Heading 5",
-    icon: /* @__PURE__ */ jsx14(Heading5, {}),
-    activeKey: "isHeading5",
-    style: "text-base font-medium leading-relaxed text-foreground"
-  },
-  {
-    type: "heading",
-    cmd: "heading",
-    args: [6],
-    tooltip: "Heading 6",
-    icon: /* @__PURE__ */ jsx14(Heading6, {}),
-    activeKey: "isHeading6",
-    style: "text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-  },
-  {
-    type: "paragraph",
-    cmd: "paragraph",
-    tooltip: "Paragraph",
-    icon: /* @__PURE__ */ jsx14(Pilcrow, {}),
-    activeKey: "isParagraph",
-    style: "text-base leading-relaxed text-muted-foreground max-w-prose truncate"
-  },
-  {
-    type: "blockquote",
-    cmd: "quote",
-    tooltip: "Blockquote",
-    icon: /* @__PURE__ */ jsx14(Quote, {}),
-    activeKey: "isBlockquote",
-    style: "text-base italic border-l-2 border-muted pl-3 text-muted-foreground leading-relaxed"
-  },
-  {
-    type: "code",
-    cmd: "codeBlock",
-    tooltip: "Code Block",
-    icon: /* @__PURE__ */ jsx14(Code, {}),
-    activeKey: "isCodeBlock",
-    style: "text-sm font-mono bg-muted rounded px-2 py-1 text-foreground truncate"
-  }
-];
-var TextFormatSection = ({
-  ctx,
-  format = {
-    heading: [1, 2, 3],
-    code: false,
-    blockquote: false,
-    paragraph: true
-  },
-  size = "sm"
+// src/components/richtext/ui/loader.tsx
+import { jsx as jsx18, jsxs as jsxs13 } from "react/jsx-runtime";
+var EditorSkeleton = ({
+  animation = "pulse"
 }) => {
-  const { execute } = useEditorChain();
-  const visibleFormats = React7.useMemo(() => {
-    return allFormats.filter((btn) => {
-      var _a, _b;
-      switch (btn.type) {
-        case "heading":
-          return (_b = format.heading) == null ? void 0 : _b.includes((_a = btn.args) == null ? void 0 : _a[0]);
-        case "paragraph":
-          return !!format.paragraph;
-        case "blockquote":
-          return !!format.blockquote;
-        case "code":
-          return !!format.code;
-        default:
-          return false;
-      }
-    });
-  }, [format]);
-  const currentActive = visibleFormats.find(
-    (btn) => ctx[btn.activeKey]
-  );
-  const currentLabel = (currentActive == null ? void 0 : currentActive.tooltip) || "Format";
-  const sizeClasses = {
-    sm: "px-2 h-8 text-sm gap-1.5",
-    md: "px-3 h-9 text-base gap-2",
-    xs: "px-1.5 h-7 text-xs gap-1"
-  };
-  return /* @__PURE__ */ jsxs8(DropdownMenu, { children: [
-    /* @__PURE__ */ jsxs8(Tooltip, { children: [
-      /* @__PURE__ */ jsx14(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsxs8(
-        DropdownMenuTrigger,
-        {
-          className: `flex items-center justify-between gap-1 border border-border rounded ${sizeClasses[size]} text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring focus:outline-none min-w-[6rem]`,
-          children: [
-            currentLabel,
-            /* @__PURE__ */ jsx14(ChevronDown, { className: "w-4 h-4 opacity-70", strokeWidth: 2 })
-          ]
-        }
-      ) }),
-      /* @__PURE__ */ jsx14(TooltipContent, { side: "bottom", children: "Select Text format" })
-    ] }),
-    /* @__PURE__ */ jsx14(DropdownMenuContent, { align: "center", className: "min-w-10 space-y-0.5", children: visibleFormats.map((btn) => {
-      const active = Boolean(ctx[btn.activeKey]);
-      return /* @__PURE__ */ jsxs8(
-        DropdownMenuItem,
-        {
-          onClick: () => execute(btn.cmd, ...btn.args || []),
-          "data-active": active,
-          className: `flex hover:bg-muted/70 data-[active=true]:text-accent-foreground data-[active=true]:bg-accent items-center justify-between gap-2 px-2 py-1.5 cursor-pointer transition-colors ease-in-out duration-150`,
-          children: [
-            /* @__PURE__ */ jsxs8("span", { className: cn("flex items-center gap-2", btn == null ? void 0 : btn.style), children: [
-              btn.icon,
-              btn.tooltip
-            ] }),
-            active && /* @__PURE__ */ jsx14(Check2, { className: "w-4 h-4 text-blue-500" })
-          ]
-        },
-        btn.tooltip
-      );
-    }) })
-  ] });
-};
-
-// src/components/richtext/ui/list-selector.tsx
-import { List as List2, ListOrdered } from "lucide-react";
-import { jsx as jsx15, jsxs as jsxs9 } from "react/jsx-runtime";
-var ListSelectorSection = ({
-  ctx,
-  size = "sm"
-}) => {
-  const { execute } = useEditorChain();
-  return /* @__PURE__ */ jsxs9(ToolbarGroup, { children: [
-    /* @__PURE__ */ jsx15(
-      ToolbarButton,
-      {
-        onClick: () => execute("bulletList"),
-        active: ctx.unorderedList,
-        toolButtonSize: size,
-        tooltip: "Unordered List",
-        children: /* @__PURE__ */ jsx15(List2, {})
-      }
-    ),
-    /* @__PURE__ */ jsx15(
-      ToolbarButton,
-      {
-        onClick: () => execute("orderedList"),
-        active: ctx.orderedList,
-        toolButtonSize: size,
-        tooltip: "Ordered List",
-        children: /* @__PURE__ */ jsx15(ListOrdered, {})
-      }
-    )
-  ] });
-};
-
-// src/components/richtext/ui/indent-outdent.tsx
-import { jsx as jsx16, jsxs as jsxs10 } from "react/jsx-runtime";
-var IndentOutdentSection = ({
-  ctx,
-  size
-}) => {
-  const { execute } = useEditorChain();
-  return /* @__PURE__ */ jsxs10(ToolbarGroup, { children: [
-    /* @__PURE__ */ jsx16(
-      ToolbarButton,
-      {
-        toolButtonSize: size,
-        disabled: ctx == null ? void 0 : ctx.isIndented,
-        onClick: () => execute("indent"),
-        children: /* @__PURE__ */ jsx16(Indent, {})
-      }
-    ),
-    /* @__PURE__ */ jsx16(
-      ToolbarButton,
-      {
-        toolButtonSize: size,
-        disabled: !(ctx == null ? void 0 : ctx.isIndented),
-        onClick: () => execute("outdent"),
-        children: /* @__PURE__ */ jsx16(Outdent, {})
-      }
-    )
-  ] });
-};
-var Indent = (_a) => {
-  var props = __objRest(_a, []);
-  return /* @__PURE__ */ jsxs10(
-    "svg",
-    __spreadProps(__spreadValues({
-      xmlns: "http://www.w3.org/2000/svg",
-      viewBox: "0 0 16 16"
-    }, props), {
-      fill: "currentColor",
+  const base = "w-full bg-muted";
+  const animationClass = animation === "shine" ? "relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.5s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/30 before:to-transparent" : "animate-pulse";
+  return /* @__PURE__ */ jsxs13(
+    "div",
+    {
+      className: `border border-border w-full rounded-md overflow-hidden bg-background ${animationClass}`,
       children: [
-        /* @__PURE__ */ jsx16("path", { d: "M1.75 2a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ jsx16("path", { d: "M8.75 5.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ jsx16("path", { d: "M8 9.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75" }),
-        /* @__PURE__ */ jsx16("path", { d: "M1.75 12.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ jsx16("path", { d: "M1 10.407c0 .473.55.755.96.493l3.765-2.408a.578.578 0 0 0 0-.985l-3.765-2.407c-.41-.262-.96.02-.96.493z" })
-      ]
-    })
-  );
-};
-var Outdent = (_a) => {
-  var props = __objRest(_a, []);
-  return /* @__PURE__ */ jsxs10(
-    "svg",
-    __spreadProps(__spreadValues({
-      xmlns: "http://www.w3.org/2000/svg",
-      viewBox: "0 0 16 16"
-    }, props), {
-      fill: "currentColor",
-      children: [
-        /* @__PURE__ */ jsx16("path", { d: "M1.75 2a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ jsx16("path", { d: "M8.75 5.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ jsx16("path", { d: "M8 9.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75" }),
-        /* @__PURE__ */ jsx16("path", { d: "M1.75 12.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ jsx16("path", { d: "M6 10.407c0 .473-.55.755-.96.493l-3.765-2.408a.578.578 0 0 1 0-.985l3.765-2.407c.41-.262.96.02.96.493z" })
-      ]
-    })
-  );
-};
-
-// src/components/richtext/ui/text-aligner.tsx
-import * as React8 from "react";
-import { TextAlignStart, TextAlignCenter, TextAlignEnd } from "lucide-react";
-import { jsx as jsx17, jsxs as jsxs11 } from "react/jsx-runtime";
-var TextAlignerSection = ({
-  size = "sm",
-  ctx
-}) => {
-  var _a;
-  const [_open, _setOpen] = React8.useState(false);
-  const { execute } = useEditorChain();
-  const alignOptions = [
-    {
-      cmd: "alignLeft",
-      tooltip: "Align Left",
-      icon: /* @__PURE__ */ jsx17(TextAlignStart, { className: "w-4 h-4" }),
-      active: ctx == null ? void 0 : ctx.justifyLeft
-    },
-    {
-      cmd: "alignCenter",
-      tooltip: "Align Center",
-      icon: /* @__PURE__ */ jsx17(TextAlignCenter, { className: "w-4 h-4" }),
-      active: ctx == null ? void 0 : ctx.justifyCenter
-    },
-    {
-      cmd: "alignRight",
-      tooltip: "Align Right",
-      icon: /* @__PURE__ */ jsx17(TextAlignEnd, { className: "w-4 h-4" }),
-      active: ctx == null ? void 0 : ctx.justifyRight
-    }
-  ];
-  const activeAlign = ((_a = alignOptions.find((a) => a.active)) == null ? void 0 : _a.icon) || /* @__PURE__ */ jsx17(TextAlignStart, { className: "w-4 h-4" });
-  return /* @__PURE__ */ jsxs11(DropdownMenu, { open: _open, onOpenChange: _setOpen, children: [
-    /* @__PURE__ */ jsx17(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx17(
-      ToolbarButton,
-      {
-        tooltip: "Text Alignment",
-        "data-active": _open,
-        toolButtonSize: size,
-        children: activeAlign
-      }
-    ) }),
-    /* @__PURE__ */ jsx17(
-      DropdownMenuContent,
-      {
-        align: "center",
-        className: "flex gap-1 p-2 min-w-0 bg-background/95 backdrop-blur-md rounded shadow-sm border",
-        children: alignOptions.map((opt) => /* @__PURE__ */ jsx17(
-          ToolbarButton,
-          {
-            tooltip: opt.tooltip,
-            toolButtonSize: "sm",
-            active: opt.active,
-            onClick: () => {
-              execute(opt.cmd);
-              _setOpen(!_open);
+        /* @__PURE__ */ jsxs13("div", { className: "flex items-center gap-2 relative px-2 py-1", children: [
+          [1, 2, 3, 4, 5, 6, 7, 8].map((width) => /* @__PURE__ */ jsx18(
+            Skeleton,
+            {
+              className: `${base} h-7 ${width === 3 ? "w-16 lg:w-20" : "w-7 lg:w-8"}  lg:h-8`
             },
-            children: opt.icon
-          },
-          opt.cmd
-        ))
-      }
-    )
-  ] });
+            width
+          )),
+          /* @__PURE__ */ jsx18(Skeleton, { className: "absolute right-1" })
+        ] }),
+        /* @__PURE__ */ jsx18("div", { className: "h-px bg-border" }),
+        /* @__PURE__ */ jsx18("div", { className: `${base} h-64` })
+      ]
+    }
+  );
 };
+var DotsLoader = () => /* @__PURE__ */ jsxs13("div", { className: "flex flex-col items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: [
+  /* @__PURE__ */ jsxs13("div", { className: "flex space-x-2", children: [
+    /* @__PURE__ */ jsx18("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" }),
+    /* @__PURE__ */ jsx18("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" }),
+    /* @__PURE__ */ jsx18("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce" })
+  ] }),
+  /* @__PURE__ */ jsx18("p", { className: "text-xs text-muted-foreground mt-3", children: "Loading editor..." })
+] });
+var SpinnerLoader = () => /* @__PURE__ */ jsx18("div", { className: "flex items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: /* @__PURE__ */ jsx18("div", { className: "w-6 h-6 border-4 border-gray-300 border-t-gray-700 rounded-full animate-spin" }) });
 
 // src/components/richtext/toolbar/ToolbarChain.tsx
-import { jsx as jsx18, jsxs as jsxs12 } from "react/jsx-runtime";
+import * as React9 from "react";
+import { Ban, Minus } from "lucide-react";
+import { jsx as jsx19, jsxs as jsxs14 } from "react/jsx-runtime";
 var ToolbarChain = ({ format }) => {
   const { iframeRef, ctx } = useEditor();
   const [chain, setChain] = React9.useState(null);
@@ -1848,16 +1983,16 @@ var ToolbarChain = ({ format }) => {
     }, 500);
     return () => clearInterval(timer);
   }, [iframeRef, chain]);
-  return /* @__PURE__ */ jsxs12(ToolbarWrapper, { className: "flex flex-wrap gap-2 border-b py-1 px-2", children: [
-    /* @__PURE__ */ jsx18(HistorySection, { ctx, size: "xs" }),
-    /* @__PURE__ */ jsx18(ToolbarButtonSeparator, { orientation: "vertical" }),
-    /* @__PURE__ */ jsx18(TextFormatSection, { ctx, size: "xs", format }),
-    /* @__PURE__ */ jsx18(StyleFormatSection, { ctx, size: "xs" }),
-    /* @__PURE__ */ jsx18(ToolbarButtonSeparator, {}),
-    /* @__PURE__ */ jsx18(ListSelectorSection, { ctx, size: "xs" }),
-    /* @__PURE__ */ jsx18(IndentOutdentSection, { size: "xs", ctx }),
-    /* @__PURE__ */ jsx18(TextAlignerSection, { ctx, size: "xs" }),
-    /* @__PURE__ */ jsx18(
+  return /* @__PURE__ */ jsxs14(ToolbarWrapper, { className: "flex flex-wrap gap-2 border-b py-1 px-2", children: [
+    /* @__PURE__ */ jsx19(HistorySection, { ctx, size: "xs" }),
+    /* @__PURE__ */ jsx19(ToolbarButtonSeparator, { orientation: "vertical" }),
+    /* @__PURE__ */ jsx19(TextFormatSection, { ctx, size: "xs", format }),
+    /* @__PURE__ */ jsx19(StyleFormatSection, { ctx, size: "xs" }),
+    /* @__PURE__ */ jsx19(ToolbarButtonSeparator, { orientation: "vertical" }),
+    /* @__PURE__ */ jsx19(ListSelectorSection, { ctx, size: "xs" }),
+    /* @__PURE__ */ jsx19(IndentOutdentSection, { size: "xs", ctx }),
+    /* @__PURE__ */ jsx19(TextAlignerSection, { ctx, size: "xs" }),
+    /* @__PURE__ */ jsx19(
       TablePicker,
       {
         variant: "outline",
@@ -1871,7 +2006,7 @@ var ToolbarChain = ({ format }) => {
         }
       }
     ),
-    /* @__PURE__ */ jsx18(
+    /* @__PURE__ */ jsx19(
       ToolbarButton,
       {
         toolButtonSize: "xs",
@@ -1880,10 +2015,10 @@ var ToolbarChain = ({ format }) => {
           var _a;
           return (_a = chain == null ? void 0 : chain.insertHTML("<hr>")) == null ? void 0 : _a.run();
         },
-        children: /* @__PURE__ */ jsx18(Minus, {})
+        children: /* @__PURE__ */ jsx19(Minus, {})
       }
     ),
-    /* @__PURE__ */ jsx18(
+    /* @__PURE__ */ jsx19(
       ToolbarButton,
       {
         toolButtonSize: "xs",
@@ -1892,77 +2027,21 @@ var ToolbarChain = ({ format }) => {
           var _a;
           return (_a = chain == null ? void 0 : chain.clear()) == null ? void 0 : _a.run();
         },
-        children: /* @__PURE__ */ jsx18(Ban, {})
+        children: /* @__PURE__ */ jsx19(Ban, {})
       }
     )
   ] });
 };
 
-// src/components/ui/skeleton.tsx
-import { jsx as jsx19 } from "react/jsx-runtime";
-function Skeleton(_a) {
-  var _b = _a, { className } = _b, props = __objRest(_b, ["className"]);
-  return /* @__PURE__ */ jsx19(
-    "div",
-    __spreadValues({
-      "data-slot": "skeleton",
-      className: cn("bg-accent animate-pulse rounded-md", className)
-    }, props)
-  );
-}
-
-// src/components/richtext/ui/loader.tsx
-import { jsx as jsx20, jsxs as jsxs13 } from "react/jsx-runtime";
-var EditorSkeleton = ({
-  animation = "pulse"
-}) => {
-  const base = "w-full bg-muted";
-  const animationClass = animation === "shine" ? "relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.5s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/30 before:to-transparent" : "animate-pulse";
-  return /* @__PURE__ */ jsxs13(
-    "div",
-    {
-      className: `border border-border w-full rounded-md overflow-hidden bg-background ${animationClass}`,
-      children: [
-        /* @__PURE__ */ jsxs13("div", { className: "flex items-center gap-2 relative px-2 py-1", children: [
-          [1, 2, 3, 4, 5, 6, 7, 8].map((width) => /* @__PURE__ */ jsx20(
-            Skeleton,
-            {
-              className: `${base} h-7 ${width === 3 ? "w-16 lg:w-20" : "w-7 lg:w-8"}  lg:h-8`
-            },
-            width
-          )),
-          /* @__PURE__ */ jsx20(Skeleton, { className: "absolute right-1" })
-        ] }),
-        /* @__PURE__ */ jsx20("div", { className: "h-px bg-border" }),
-        /* @__PURE__ */ jsx20("div", { className: `${base} h-64` })
-      ]
-    }
-  );
-};
-var DotsLoader = () => /* @__PURE__ */ jsxs13("div", { className: "flex flex-col items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: [
-  /* @__PURE__ */ jsxs13("div", { className: "flex space-x-2", children: [
-    /* @__PURE__ */ jsx20("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" }),
-    /* @__PURE__ */ jsx20("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" }),
-    /* @__PURE__ */ jsx20("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce" })
-  ] }),
-  /* @__PURE__ */ jsx20("p", { className: "text-xs text-muted-foreground mt-3", children: "Loading editor..." })
-] });
-var SpinnerLoader = () => /* @__PURE__ */ jsx20("div", { className: "flex items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: /* @__PURE__ */ jsx20("div", { className: "w-6 h-6 border-4 border-gray-300 border-t-gray-700 rounded-full animate-spin" }) });
-
 // src/components/richtext/editor.tsx
-import { jsx as jsx21, jsxs as jsxs14 } from "react/jsx-runtime";
+import { jsx as jsx20 } from "react/jsx-runtime";
 var RichtextEditor = ({
   initialContent = "<p>Start typing\u2026</p>",
   loader = "shine",
   toolbar,
   onChange
 }) => {
-  return /* @__PURE__ */ jsx21(EditorProvider, { initialContent, onChange, children: /* @__PURE__ */ jsx21(EditorContainerBlock, { loader, toolbar }) });
-};
-function EditorContainerBlock({ loader, toolbar }) {
-  const { iframeRef } = useEditor();
   const [isMount, setIsMount] = React10.useState(false);
-  const [isFocused, setIsFocused] = React10.useState(false);
   React10.useEffect(() => {
     const isInit = setInterval(() => {
       setIsMount(true);
@@ -1974,54 +2053,20 @@ function EditorContainerBlock({ loader, toolbar }) {
       window.removeEventListener("load", handleLoad);
     };
   }, []);
-  React10.useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-    const handleFocus = () => setIsFocused(true);
-    const handleBlur = () => setIsFocused(false);
-    const interval = setInterval(() => {
-      const body = doc.body;
-      if (body) {
-        body.addEventListener("focus", handleFocus);
-        body.addEventListener("blur", handleBlur);
-        clearInterval(interval);
-      }
-    }, 200);
-    return () => {
-      clearInterval(interval);
-      const body = doc.body;
-      if (body) {
-        body.removeEventListener("focus", handleFocus);
-        body.removeEventListener("blur", handleBlur);
-      }
-    };
-  }, [iframeRef]);
   if (!isMount) {
     switch (loader) {
       case "shine":
-        return /* @__PURE__ */ jsx21(EditorSkeleton, { animation: "shine" });
+        return /* @__PURE__ */ jsx20(EditorSkeleton, { animation: "shine" });
       case "skeleton":
-        return /* @__PURE__ */ jsx21(EditorSkeleton, {});
+        return /* @__PURE__ */ jsx20(EditorSkeleton, {});
       case "dots":
-        return /* @__PURE__ */ jsx21(DotsLoader, {});
+        return /* @__PURE__ */ jsx20(DotsLoader, {});
       default:
-        return /* @__PURE__ */ jsx21(SpinnerLoader, {});
+        return /* @__PURE__ */ jsx20(SpinnerLoader, {});
     }
   }
-  return /* @__PURE__ */ jsxs14(
-    "div",
-    {
-      "data-focused": isFocused,
-      className: "relative border border-border rounded-sm transition-all duration-200 ring-0 data-[focused=true]:ring-1 ring-blue-600/60 shadow-sm",
-      children: [
-        /* @__PURE__ */ jsx21(ToolbarChain, __spreadValues({}, toolbar)),
-        /* @__PURE__ */ jsx21(EditorFrame, {})
-      ]
-    }
-  );
-}
+  return /* @__PURE__ */ jsx20(EditorProvider, { initialContent, onChange, children: /* @__PURE__ */ jsx20(ToolbarChain, __spreadValues({}, toolbar)) });
+};
 export {
   RichtextEditor
 };

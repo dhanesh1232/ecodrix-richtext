@@ -13,7 +13,6 @@ declare global {
     init?: {
       height?: string | number;
     };
-
     toolbar?: ToolbarChainProps;
   }
 

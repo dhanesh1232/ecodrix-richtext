@@ -13,6 +13,7 @@ import { useEditorChain } from "@/hooks/chain-execute";
 export const TextAlignerSection: React.FC<TextAlignerSectionProps> = ({
   size = "sm",
   ctx,
+  ...props
 }) => {
   const [_open, _setOpen] = React.useState(false);
   const { execute } = useEditorChain();
@@ -47,6 +48,7 @@ export const TextAlignerSection: React.FC<TextAlignerSectionProps> = ({
     <DropdownMenu open={_open} onOpenChange={_setOpen}>
       <DropdownMenuTrigger asChild>
         <ToolbarButton
+          {...props}
           tooltip="Text Alignment"
           data-active={_open}
           toolButtonSize={size}

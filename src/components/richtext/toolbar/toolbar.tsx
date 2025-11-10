@@ -20,7 +20,14 @@ interface ToolbarWrapperProps
 const ToolbarWrapper = React.forwardRef<HTMLDivElement, ToolbarWrapperProps>(
   ({ children, className, ...props }, ref) => {
     return (
-      <div ref={ref} className={cn("flex items-center", className)} {...props}>
+      <div
+        ref={ref}
+        className={cn(
+          "flex items-center transform transition ease-in-out duration-300",
+          className
+        )}
+        {...props}
+      >
         {children}
       </div>
     );
@@ -34,7 +41,10 @@ const ToolbarGroup = React.forwardRef<HTMLDivElement, ToolbarWrapperProps>(
     return (
       <div
         ref={ref}
-        className={cn("flex items-center gap-1", className)}
+        className={cn(
+          "flex items-center gap-1 transform transition ease-in-out duration-300",
+          className
+        )}
         {...props}
       >
         {children}
