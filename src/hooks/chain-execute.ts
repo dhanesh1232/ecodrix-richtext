@@ -2,7 +2,7 @@
 "use client";
 import * as React from "react";
 import { EditorChain } from "@/core/chain";
-import { useEditor } from "@/components/richtext/provider";
+import { useEditor } from "@/context/editor";
 
 export function useEditorChain() {
   const { iframeRef } = useEditor();

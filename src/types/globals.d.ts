@@ -1,13 +1,14 @@
 import type { Icons } from "@/components/icons";
+import { EditorCore } from "@/core/engine";
 import { TooltipContentProps } from "@radix-ui/react-tooltip";
 import { LucideIcon } from "lucide-react";
 import React, { ReactNode } from "react";
 
-declare module "@monaco-editor/react";
+// declare module "@monaco-editor/react";
 declare global {
   interface RichtextEditorProps {
     initialContent?: string;
-    onChange?: (html: string) => void;
+    onChange?: (value: EditorCore) => void;
     loader?: EditorLoader;
     init?: {
       height?: string | number;
@@ -19,6 +20,10 @@ declare global {
   type EditorLoader = "skeleton" | "dots" | "shine" | "spinner";
 
   type EditorMode = "design" | "html" | "preview";
+  interface UndoRedoState {
+    canUndo: boolean;
+    canRedo: boolean;
+  }
 
   interface EditorContainerBlockProps {
     initialContent?: string;
@@ -220,6 +225,19 @@ declare global {
 
   type Heading = 1 | 2 | 3 | 4 | 5 | 6;
   type ToolbarButtonSize = "sm" | "md" | "xs";
+
+  interface UndoRedoState {
+    canUndo: boolean;
+    canRedo: boolean;
+  }
+
+  type EditorEvents = {
+    ready: string;
+    update: string;
+    context: EditorContextState;
+    undoRedo: UndoRedoState;
+    error: string;
+  };
 }
 
 export {};

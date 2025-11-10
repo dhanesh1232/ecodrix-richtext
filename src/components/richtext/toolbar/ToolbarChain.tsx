@@ -1,7 +1,7 @@
 // ToolbarChain.tsx
 "use client";
 import * as React from "react";
-import { useEditor } from "../provider";
+import { useEditor } from "@/context/editor";
 import { EditorChain } from "@/core/chain";
 import { Ban, Minus } from "lucide-react";
 import { TablePicker } from "../ui/table-picker";

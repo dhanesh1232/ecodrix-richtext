@@ -4,8 +4,13 @@ export function editorRuntimeInit() {
   const undoStack: string[] = [];
   const redoStack: string[] = [];
 
-  function notifyReady() {
-    parent.postMessage({ type: "IFRAME_READY" }, "*");
+  function notifyReadySafely() {
+    const check = setInterval(() => {
+      if (document.body && document.body.isContentEditable) {
+        clearInterval(check);
+        parent.postMessage({ type: "IFRAME_READY" }, "*");
+      }
+    }, 50);
   }
 
   function saveSelection() {
@@ -28,9 +33,9 @@ export function editorRuntimeInit() {
     document.readyState === "complete" ||
     document.readyState === "interactive"
   ) {
-    notifyReady();
+    notifyReadySafely();
   } else {
-    window.addEventListener("DOMContentLoaded", notifyReady);
+    window.addEventListener("DOMContentLoaded", notifyReadySafely);
   }
 
   // 🔁 Triggered whenever selection or caret changes

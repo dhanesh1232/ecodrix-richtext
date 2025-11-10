@@ -1,3 +1,4 @@
+// src/core/chain.ts
 export class EditorChain {
   private target: Window | null;
   private queue: Array<Record<string, unknown>> = [];

@@ -1,3 +1,4 @@
+// src/context/editor.tsx
 "use client";
 import React, {
   createContext,
@@ -7,6 +8,7 @@ import React, {
   useEffect,
   useCallback,
 } from "react";
+import { EditorCore } from "@/core/engine";
 
 const defaultCtx: EditorContextState = {
   block: "P",
@@ -37,34 +39,62 @@ const defaultCtx: EditorContextState = {
 };
 
 export type EditorContextShape = {
-  html: string;
-  setHtml: (h: string) => void;
+  core: EditorCore | null;
   ctx: EditorContextState;
   setCtx: React.Dispatch<React.SetStateAction<EditorContextState>>;
+  html: string;
+  json: object[];
   iframeRef: React.RefObject<HTMLIFrameElement>;
   refreshCtx: () => void;
-  onChange?: (html: string) => void; // ✅ external change listener
-  setOnChange?: (fn: (html: string) => void) => void;
 };
 
 const EditorContext = createContext<EditorContextShape | null>(null);
 
-export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const EditorProvider: React.FC<{
+  initialContent?: string;
+  children?: React.ReactNode;
+  onChange?: (editor: EditorCore) => void;
+}> = ({ initialContent = "<p>Start typing…</p>", children, onChange }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [html, setHtml] = useState("");
-  const [ctx, setCtx] = useState<EditorContextState>(defaultCtx);
-  const [onChange, setOnChange] = useState<
-    ((html: string) => void) | undefined
-  >();
+  const [core, setCore] = useState<EditorCore | null>(null);
+  const [ctx, setCtx] = useState(defaultCtx);
+  const [html, setHtml] = useState(initialContent);
+  const [json, setJson] = useState<object[]>([]);
+
+  useEffect(() => {
+    if (!iframeRef.current) return;
+
+    const editor = new EditorCore(iframeRef.current, initialContent);
+    editor.init();
+    setCore(editor);
+
+    // 🧠 Watch for updates from iframe runtime
+    editor.on("update", () => {
+      setHtml(editor.toHTML());
+      setJson(editor.toJSON());
+      // 🚀 Fire external onChange callback
+      onChange?.(editor);
+    });
+
+    // 🧠 Watch for context (bold, italics, etc.)
+    editor.on("context", (data) => {
+      setCtx((prev) => ({ ...prev, ...(data as object) }));
+    });
+
+    // 🧠 Undo/Redo state updates
+    editor.on("undoRedo", (state: UndoRedoState) => {
+      setCtx((prev) => ({
+        ...prev,
+        canUndo: Boolean(state?.canUndo),
+        canRedo: Boolean(state?.canRedo),
+      }));
+    });
+    return () => editor.destroy();
+  }, [iframeRef, onChange, initialContent]);
 
   const refreshCtx = useCallback(() => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    const doc = win.document;
-    if (!doc) return;
-
+    if (!core?.doc) return;
+    const doc = core.doc;
     const block = (doc.queryCommandValue("formatBlock") || "P").toUpperCase();
     setCtx((prev) => ({
       ...prev,
@@ -91,65 +121,18 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({
       isBlockquote: block === "BLOCKQUOTE",
       isCodeBlock: block === "PRE",
     }));
-  }, [iframeRef]);
-
-  // ✅ Handle iframe ready & inject initial content
-  React.useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
-    const handleMessage = (e: MessageEvent) => {
-      if (e.data?.type === "IFRAME_READY") {
-        console.log("Ready");
-        console.log("🟢 IFRAME READY — injecting initial content");
-        const win = iframe.contentWindow;
-        if (win) {
-          console.log(win);
-          win.postMessage({ type: "SET_HTML", html: html }, "*");
-          setHtml(html || "");
-        }
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [iframeRef, setHtml, html]);
-
-  useEffect(() => {
-    const onMessage = (e: MessageEvent) => {
-      const d = e.data || {};
-      if (d.type === "UPDATE") {
-        setHtml(d.html);
-        console.log(onChange);
-        if (onChange) {
-          console.log(d.type);
-          onChange(d.html);
-        }
-      }
-      if (d.type === "CONTEXT") setCtx((prev) => ({ ...prev, ...d }));
-      if (d.type === "UNDO_REDO_STATE")
-        setCtx((prev) => ({
-          ...prev,
-          canUndo: !!d.canUndo,
-          canRedo: !!d.canRedo,
-        }));
-      if (d.type === "IFRAME_ERROR") console.error("Iframe error:", d.message);
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [core]);
 
   return (
     <EditorContext.Provider
       value={{
-        html,
-        setHtml,
+        core,
         ctx,
         setCtx,
+        html,
+        json,
         iframeRef: iframeRef as React.RefObject<HTMLIFrameElement>,
         refreshCtx,
-        onChange,
-        setOnChange,
       }}
     >
       {children}

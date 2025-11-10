@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { EditorFrame } from "./editor/iframe";
-import { EditorProvider, useEditor } from "./provider";
+import { EditorProvider, useEditor } from "@/context/editor";
 import { ToolbarChain } from "./toolbar/ToolbarChain";
 import { DotsLoader, EditorSkeleton, SpinnerLoader } from "./ui";
 
@@ -12,54 +12,31 @@ export const RichtextEditor: React.FC<RichtextEditorProps> = ({
   onChange,
 }) => {
   return (
-    <EditorProvider>
-      <EditorContainerBlock
-        initialContent={initialContent}
-        loader={loader}
-        toolbar={toolbar}
-        onChange={onChange}
-      />
+    <EditorProvider initialContent={initialContent} onChange={onChange}>
+      <EditorContainerBlock loader={loader} toolbar={toolbar} />
     </EditorProvider>
   );
 };
 
-// Inner container (can access context)
-function EditorContainerBlock({
-  initialContent,
-  loader,
-  toolbar,
-  onChange,
-}: EditorContainerBlockProps) {
-  const { iframeRef, html, setHtml, setOnChange } = useEditor();
+function EditorContainerBlock({ loader, toolbar }: EditorContainerBlockProps) {
+  const { iframeRef } = useEditor();
   const [isMount, setIsMount] = React.useState(false);
   const [isFocused, setIsFocused] = React.useState(false);
 
   React.useEffect(() => {
-    setHtml(initialContent!);
-
-    if (onChange) onChange?.(html);
-  }, [initialContent, setHtml, html, onChange]);
-
-  React.useEffect(() => {
     const isInit = setInterval(() => {
-      setHtml(initialContent!);
       setIsMount(true);
     }, 300);
-
     const handleLoad = () => clearInterval(isInit);
     window.addEventListener("load", handleLoad);
-
-    // Cleanup when unmounting
     return () => {
       clearInterval(isInit);
       window.removeEventListener("load", handleLoad);
     };
   }, []);
 
-  // ✅ Focus / blur detection
   React.useEffect(() => {
     const iframe = iframeRef.current;
-    console.log(iframe);
     if (!iframe) return;
     const doc = iframe.contentDocument;
     if (!doc) return;
@@ -86,7 +63,6 @@ function EditorContainerBlock({
     };
   }, [iframeRef]);
 
-  // ✅ Loader switch
   if (!isMount) {
     switch (loader) {
       case "shine":
@@ -102,7 +78,7 @@ function EditorContainerBlock({
   return (
     <div
       data-focused={isFocused}
-      className={`relative border border-border rounded-sm transition-all duration-200 ring-0 data-[focused=true]:ring-1 ring-blue-600/60 shadow-sm`}
+      className="relative border border-border rounded-sm transition-all duration-200 ring-0 data-[focused=true]:ring-1 ring-blue-600/60 shadow-sm"
     >
       <ToolbarChain {...toolbar} />
       <EditorFrame />
