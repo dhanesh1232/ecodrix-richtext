@@ -3,12 +3,33 @@ import * as React from "react";
 import { EditorProvider } from "@/context/editor";
 import { DotsLoader, EditorSkeleton, SpinnerLoader } from "./ui";
 import { ToolbarChain } from "./toolbar/ToolbarChain";
+import type { EditorCore } from "@/core/engine";
+
+interface RichtextEditorProps {
+  initialContent?: string;
+  onChange?: (value: EditorCore) => void;
+  placeholder?: string;
+
+  loader?: EditorLoader;
+  toolbar?: ToolbarChainProps;
+  style?: DesignProps;
+}
 
 export const RichtextEditor: React.FC<RichtextEditorProps> = ({
   initialContent,
   loader = "shine",
   toolbar,
   onChange,
+  placeholder,
+  style = {
+    height: "350px",
+    theme: "light",
+    border: {
+      width: 1,
+      radius: "md",
+    },
+    shadow: "md",
+  },
 }) => {
   const [isMount, setIsMount] = React.useState(false);
 
@@ -38,7 +59,12 @@ export const RichtextEditor: React.FC<RichtextEditorProps> = ({
   }
 
   return (
-    <EditorProvider initialContent={initialContent} onChange={onChange}>
+    <EditorProvider
+      placeholder={placeholder}
+      initialContent={initialContent}
+      onChange={onChange}
+      style={style}
+    >
       <ToolbarChain {...toolbar} />
     </EditorProvider>
   );

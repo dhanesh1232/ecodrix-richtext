@@ -1,15 +1,18 @@
 "use client";
 import { RichtextEditor } from "@/components/richtext/editor";
 import { EditorCore } from "@/core/engine";
+import { useState } from "react";
 
 export default function Page() {
+  const [value, setValue] = useState("");
   return (
     <div className="max-w-4xl mx-auto p-6 max-h-[600px]">
       <RichtextEditor
         onChange={(value: EditorCore) => {
           console.log(value?.toJSON(), value.toHTML());
         }}
-        initialContent="<p>Start typing…</p>"
+        placeholder="Write something...."
+        initialContent={value}
         toolbar={{
           mediaUrl: true,
           format: {

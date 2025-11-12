@@ -2,6 +2,7 @@
 "use client";
 import * as React from "react";
 import { EditorCore } from "@/core/engine";
+import { cn } from "@/lib/utils";
 
 const defaultCtx: EditorContextState = {
   block: "P",
@@ -49,11 +50,21 @@ export const useEditor = () => {
   return ctx;
 };
 
-export const EditorProvider: React.FC<{
+export interface EditorProviderProps {
   initialContent?: string;
   children?: React.ReactNode;
   onChange?: (editor: EditorCore) => void;
-}> = ({ initialContent = "Start typing...", children, onChange }) => {
+  placeholder?: string;
+  style?: DesignProps;
+}
+
+export const EditorProvider: React.FC<EditorProviderProps> = ({
+  initialContent = "Start typing...",
+  children,
+  onChange,
+  placeholder,
+  style,
+}) => {
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
 
   const [core, setCore] = React.useState<EditorCore | null>(null);
@@ -67,7 +78,8 @@ export const EditorProvider: React.FC<{
 
     const editor = new EditorCore(
       iframeRef.current,
-      `<p>${initialContent}</p>`
+      initialContent,
+      placeholder
     );
 
     editor.init();
@@ -84,6 +96,11 @@ export const EditorProvider: React.FC<{
     // 🧠 Watch for context (bold, italics, etc.)
     editor.on("context", (data) => {
       setCtx((prev) => ({ ...prev, ...(data as object) }));
+    });
+
+    editor.on("ready", () => {
+      editor.enableAutoTheme();
+      //editor.setTheme(style?.theme || "light");
     });
 
     // 🧠 Undo/Redo state updates
@@ -156,6 +173,34 @@ export const EditorProvider: React.FC<{
     }));
   }, [core]);
 
+  const radiusClassMap = {
+    none: "rounded-none",
+    sm: "rounded-sm",
+    md: "rounded-md",
+    lg: "rounded-lg",
+    xl: "rounded-xl",
+    "2xl": "rounded-2xl",
+    "3xl": "rounded-3xl",
+  };
+
+  const shadowClassMap = {
+    none: "",
+    sm: "shadow-sm",
+    md: "shadow-md",
+    lg: "shadow-lg",
+    xl: "shadow-xl",
+  };
+
+  const borderWidth = style?.border?.width ?? 1;
+  const borderRadius = style?.border?.radius ?? "md";
+  const shadow = style?.shadow ?? "none";
+
+  const containerClass = cn(
+    "relative transition-all duration-200 ring-0 data-[focused=true]:ring-1 ring-blue-500/70 hover:border-blue-400 cursor-text border border-border",
+    radiusClassMap[borderRadius!],
+    shadowClassMap[shadow!]
+  );
+
   return (
     <EditorContext.Provider
       value={{
@@ -170,20 +215,34 @@ export const EditorProvider: React.FC<{
     >
       <div
         data-focused={isFocused}
-        className="
-    relative border border-border rounded-sm 
-    transition-all duration-200 ring-0 
-    data-[focused=true]:ring-1 ring-blue-500/70 shadow-sm
-    hover:border-blue-400 cursor-text
-  "
+        style={{
+          height:
+            typeof style?.height === "string"
+              ? style?.height
+              : `${style?.height}px`,
+          borderWidth: `${borderWidth}px`,
+        }}
+        className={cn(containerClass, "overflow-hidden")}
       >
         {children}
         <iframe
           ref={iframeRef}
-          className="
-      w-full h-[350px] border-0 rounded-b 
-      bg-background cursor-text focus:cursor-text
-    "
+          style={{
+            height: (() => {
+              const h = style?.height;
+              if (typeof h === "string") {
+                // Case 1: percentage → use CSS calc
+                if (h.includes("%")) return `calc(${h} - 42px)`;
+                // Case 2: pixel string → subtract numerically
+                if (h.includes("px")) return `${parseFloat(h) - 42}px`;
+              }
+              // Case 3: numeric value
+              if (typeof h === "number") return `${h - 42}px`;
+              // Default fallback
+              return "calc(100% - 42px)";
+            })(),
+          }}
+          className="w-full border-0 rounded-b bg-background cursor-text focus:cursor-text p-0"
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
         />
       </div>

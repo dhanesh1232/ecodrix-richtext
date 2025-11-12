@@ -6,16 +6,6 @@ import React, { ReactNode } from "react";
 
 // declare module "@monaco-editor/react";
 declare global {
-  interface RichtextEditorProps {
-    initialContent?: string;
-    onChange?: (value: EditorCore) => void;
-    loader?: EditorLoader;
-    init?: {
-      height?: string | number;
-    };
-    toolbar?: ToolbarChainProps;
-  }
-
   type EditorLoader = "skeleton" | "dots" | "shine" | "spinner";
 
   type EditorMode = "design" | "html" | "preview";
@@ -29,11 +19,6 @@ declare global {
     loader?: EditorLoader;
     toolbar?: ToolbarChainProps;
     onChange?: (html: string) => void;
-  }
-
-  interface ToolbarChainProps {
-    format?: Format;
-    mediaUrl?: boolean;
   }
 
   interface ButtonWIthTooltipProps
@@ -237,6 +222,30 @@ declare global {
     undoRedo: UndoRedoState;
     error: string;
   };
+
+  interface ToolbarChainProps {
+    format?: Format;
+    mediaUrl?: boolean;
+  }
+
+  /// Style
+  interface DesignProps {
+    height?: string | number;
+    theme?: "light" | "dark" | Record<string, string>;
+    border?: {
+      width?: BorderWith;
+      radius?: BorderRadius;
+    };
+    ring?: {
+      width?: number;
+      color?: string;
+    };
+    shadow?: BoxShadow;
+  }
+
+  type BorderWith = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  type BorderRadius = "none" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl";
+  type BoxShadow = "none" | "sm" | "md" | "lg" | "xl";
 }
 
 export {};

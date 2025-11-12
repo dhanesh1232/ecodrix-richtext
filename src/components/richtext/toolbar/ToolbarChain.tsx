@@ -17,6 +17,7 @@ import { TextFormatSection } from "../ui/text-format";
 import { ListSelectorSection } from "../ui/list-selector";
 import { IndentOutdentSection } from "../ui/indent-outdent";
 import { TextAlignerSection } from "../ui/text-aligner";
+import { ThemeProvider } from "@/components/theme-provider";
 
 export const ToolbarChain: React.FC<ToolbarChainProps> = ({ format }) => {
   const { iframeRef, ctx } = useEditor();
@@ -33,40 +34,47 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({ format }) => {
   }, [iframeRef, chain]);
 
   return (
-    <ToolbarWrapper className="flex flex-wrap gap-2 border-b py-1 px-2">
-      <HistorySection ctx={ctx} size="xs" />
-      <ToolbarButtonSeparator orientation="vertical" />
-      <TextFormatSection ctx={ctx} size="xs" format={format} />
-      <StyleFormatSection ctx={ctx} size="xs" />
-      <ToolbarButtonSeparator orientation="vertical" />
-      <ListSelectorSection ctx={ctx} size="xs" />
-      <IndentOutdentSection size="xs" ctx={ctx} />
-      <TextAlignerSection ctx={ctx} size="xs" />
-      <TablePicker
-        variant="outline"
-        size="icon-xs"
-        onSelect={(rows, cols) => {
-          const win = iframeRef.current?.contentWindow;
-          const body = win?.document?.body;
-          body?.focus();
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <ToolbarWrapper className="flex flex-wrap gap-2 border-b py-1 px-2">
+        <HistorySection ctx={ctx} size="xs" />
+        <ToolbarButtonSeparator orientation="vertical" />
+        <TextFormatSection ctx={ctx} size="xs" format={format} />
+        <StyleFormatSection ctx={ctx} size="xs" />
+        <ToolbarButtonSeparator orientation="vertical" />
+        <ListSelectorSection ctx={ctx} size="xs" />
+        <IndentOutdentSection size="xs" ctx={ctx} />
+        <TextAlignerSection ctx={ctx} size="xs" />
+        <TablePicker
+          variant="outline"
+          size="icon-xs"
+          onSelect={(rows: number, cols: number) => {
+            const win = iframeRef.current?.contentWindow;
+            const body = win?.document?.body;
+            body?.focus();
 
-          chain?.insertTable(rows, cols)?.run();
-        }}
-      />
-      <ToolbarButton
-        toolButtonSize="xs"
-        tooltip="Add Divider"
-        onClick={() => chain?.insertHTML("<hr>")?.run()}
-      >
-        <Minus />
-      </ToolbarButton>
-      <ToolbarButton
-        toolButtonSize="xs"
-        tooltip="Clear"
-        onClick={() => chain?.clear()?.run()}
-      >
-        <Ban />
-      </ToolbarButton>
-    </ToolbarWrapper>
+            chain?.insertTable(rows, cols)?.run();
+          }}
+        />
+        <ToolbarButton
+          toolButtonSize="xs"
+          tooltip="Add Divider"
+          onClick={() => chain?.insertHTML("<hr>")?.run()}
+        >
+          <Minus />
+        </ToolbarButton>
+        <ToolbarButton
+          toolButtonSize="xs"
+          tooltip="Clear"
+          onClick={() => chain?.clear()?.run()}
+        >
+          <Ban />
+        </ToolbarButton>
+      </ToolbarWrapper>
+    </ThemeProvider>
   );
 };

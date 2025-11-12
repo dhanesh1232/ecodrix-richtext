@@ -1,8 +1,7 @@
-// src/editor/runtime.ts
 export function editorRuntimeInit() {
   let lastRange: Range | null = null;
-  const undoStack: string[] = [];
-  const redoStack: string[] = [];
+  const undoStack: { html: string; caret: any }[] = [];
+  const redoStack: { html: string; caret: any }[] = [];
 
   function notifyReadySafely() {
     const check = setInterval(() => {
@@ -25,6 +24,51 @@ export function editorRuntimeInit() {
     s?.addRange(lastRange);
   }
 
+  // 🧭 Utility: get and set caret position using node path + offset
+  function getCaretPosition() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    const path: number[] = [];
+
+    let node: Node | null = range.startContainer;
+
+    while (node && node !== document.body) {
+      const parentNode: Node | null = node.parentNode;
+      if (!parentNode) break;
+
+      // ✅ Ensure node is a ChildNode before using in indexOf
+      const childNodeList = Array.from(parentNode.childNodes);
+      const index = childNodeList.indexOf(node as ChildNode); // <-- Cast here safely
+
+      path.unshift(index);
+      node = parentNode;
+    }
+
+    return { path, offset: range.startOffset };
+  }
+
+  function setCaretPosition(pos: { path: number[]; offset: number } | null) {
+    if (!pos) return;
+    let node: Node | null = document.body;
+    for (const index of pos.path) {
+      if (!node?.childNodes[index]) break;
+      node = node.childNodes[index];
+    }
+
+    if (!node) return;
+    const range = document.createRange();
+    try {
+      range.setStart(node, Math.min(pos.offset, node.textContent?.length || 0));
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    } catch {
+      /* ignore invalid positions */
+    }
+  }
+
   function send(type: string, payload: Record<string, unknown> = {}) {
     parent.postMessage(Object.assign({ type }, payload), "*");
   }
@@ -38,7 +82,78 @@ export function editorRuntimeInit() {
     window.addEventListener("DOMContentLoaded", notifyReadySafely);
   }
 
-  // 🔁 Triggered whenever selection or caret changes
+  /** 🧱 Ensures a clean paragraph root when body is empty */
+  function ensureParagraphExists() {
+    const body = document.body;
+    const html = body.innerHTML
+      .replace(/<br\s*\/?>/gi, "")
+      .replace(/<\/?p[^>]*>/gi, "")
+      .replace(/<\/?div[^>]*>/gi, "")
+      .replace(/&nbsp;/g, "")
+      .replace(/\s+/g, "")
+      .trim();
+
+    if (html.length === 0) {
+      body.innerHTML = "<p><br></p>";
+
+      const firstP = body.querySelector("p");
+      const range = document.createRange();
+      const sel = window.getSelection();
+      if (firstP) {
+        range.setStart(firstP, 0);
+        range.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+    }
+  }
+
+  /** 💬 Placeholder system */
+  function setupPlaceholder() {
+    const body = document.body;
+
+    function isVisuallyEmpty(): boolean {
+      const html = body.innerHTML
+        .replace(/<br\s*\/?>/gi, "")
+        .replace(/<\/?p[^>]*>/gi, "")
+        .replace(/<\/?div[^>]*>/gi, "")
+        .replace(/&nbsp;/g, "")
+        .replace(/\s+/g, "")
+        .trim();
+      return html.length === 0;
+    }
+
+    function updatePlaceholder() {
+      if (isVisuallyEmpty()) body.classList.add("empty");
+      else body.classList.remove("empty");
+    }
+
+    const style = document.createElement("style");
+    style.textContent = `
+      body.empty::before {
+        content: attr(data-placeholder);
+        color: var(--editor-placeholder);
+        pointer-events: none;
+        position: absolute;
+        top: 0.75rem;
+        left: 0.75rem;
+        opacity: 0.6;
+      }
+    `;
+    document.head.appendChild(style);
+
+    body.addEventListener("input", updatePlaceholder);
+    body.addEventListener("focus", updatePlaceholder);
+    body.addEventListener("blur", updatePlaceholder);
+    updatePlaceholder();
+  }
+
+  // 🧠 Initialize placeholder & baseline
+  setupPlaceholder();
+  ensureParagraphExists();
+  pushUndoState();
+
+  // 🔁 Selection tracking
   document.addEventListener("selectionchange", () => {
     const payload = {
       block: document.queryCommandValue("formatBlock") || "P",
@@ -56,7 +171,7 @@ export function editorRuntimeInit() {
       backColor: document.queryCommandValue("hiliteColor"),
     };
 
-    // 🧱 Detect indentation
+    // Detect indentation
     const sel = window.getSelection();
     let isIndented = false;
 
@@ -73,8 +188,6 @@ export function editorRuntimeInit() {
         const style = window.getComputedStyle(block);
         const marginLeft = parseFloat(style.marginLeft || "0");
         const paddingLeft = parseFloat(style.paddingLeft || "0");
-
-        // Detect if the element or its HTML has visual indentation
         isIndented =
           marginLeft > 5 ||
           paddingLeft > 5 ||
@@ -84,7 +197,6 @@ export function editorRuntimeInit() {
 
     (payload as EditorContextState).isIndented = isIndented;
 
-    // Normalize heading levels
     const blk = String(payload.block).toUpperCase();
     (payload as EditorContextState).isHeading1 = blk === "H1";
     (payload as EditorContextState).isHeading2 = blk === "H2";
@@ -100,58 +212,68 @@ export function editorRuntimeInit() {
     saveSelection();
   });
 
-  // Save current state for undo tracking
+  // 🧱 Undo/Redo state
   function pushUndoState() {
-    const currentHTML = document.body.innerHTML;
-    if (
-      undoStack.length === 0 ||
-      undoStack[undoStack.length - 1] !== currentHTML
-    ) {
-      undoStack.push(currentHTML);
-      redoStack.length = 0; // clear redo
-    }
+    const runtimeScript = document.getElementById("__EDITOR_RUNTIME__");
+    const clone = document.body.cloneNode(true) as HTMLElement;
+    const runtimeClone = clone.querySelector("#__EDITOR_RUNTIME__");
+    if (runtimeClone) runtimeClone.remove();
+
+    const currentHTML = clone.innerHTML.trim();
+    const caret = getCaretPosition();
+
+    const last = undoStack[undoStack.length - 1];
+    if (last && typeof last === "object" && last.html === currentHTML) return;
+
+    undoStack.push({ html: currentHTML, caret });
+    redoStack.length = 0;
+
     send("UNDO_REDO_STATE", {
       canUndo: undoStack.length > 1,
       canRedo: redoStack.length > 0,
     });
   }
 
-  // Restore state for undo
   function doUndo() {
     if (undoStack.length > 1) {
       const current = undoStack.pop();
       if (current) redoStack.push(current);
+
       const prev = undoStack[undoStack.length - 1];
-      document.body.innerHTML = prev;
-      send("UPDATE", { html: prev });
+      document.body.innerHTML = prev.html || "<p><br></p>";
+      ensureParagraphExists();
+      setCaretPosition(prev.caret || null);
+
+      send("UPDATE", { html: prev.html });
     }
+
     send("UNDO_REDO_STATE", {
       canUndo: undoStack.length > 1,
       canRedo: redoStack.length > 0,
     });
   }
 
-  // Restore state for redo
   function doRedo() {
     if (redoStack.length > 0) {
       const next = redoStack.pop();
       if (next) {
         undoStack.push(next);
-        document.body.innerHTML = next;
-        send("UPDATE", { html: next });
+        document.body.innerHTML = next.html || "<p><br></p>";
+        ensureParagraphExists();
+        setCaretPosition(next.caret || null);
+        send("UPDATE", { html: next.html });
       }
     }
+
     send("UNDO_REDO_STATE", {
       canUndo: undoStack.length > 1,
       canRedo: redoStack.length > 0,
     });
   }
 
-  // 🧠 Initialize
-  pushUndoState();
-
   // 🧠 Update html on edit
   document.body.addEventListener("input", () => {
+    ensureParagraphExists();
     pushUndoState();
     send("UPDATE", { html: document.body.innerHTML });
   });
@@ -166,18 +288,11 @@ export function editorRuntimeInit() {
   // 📩 Commands from parent
   window.addEventListener("message", (e: MessageEvent) => {
     const { type, cmd, value, html, block } = e.data || {};
-    if (type === "EXEC" && cmd === "undo") {
-      doUndo();
-      return;
-    }
 
-    if (type === "EXEC" && cmd === "redo") {
-      doRedo();
-      return;
-    }
+    if (type === "EXEC" && cmd === "undo") return void doUndo();
+    if (type === "EXEC" && cmd === "redo") return void doRedo();
 
     if (type === "EXEC") {
-      console.log(type, cmd, value);
       restoreSelection();
       document.execCommand(cmd, false, value ?? null);
       document.body.dispatchEvent(new Event("input"));
@@ -196,26 +311,23 @@ export function editorRuntimeInit() {
     }
 
     if (type === "SET_HTML") {
-      console.log(html);
       document.body.innerHTML = html || "";
+      ensureParagraphExists();
       document.body.dispatchEvent(new Event("input"));
     }
 
     if (type === "CUSTOM_INDENT") {
-      console.log(type);
       const ev = new KeyboardEvent("keydown", { key: "Tab" });
       document.dispatchEvent(ev);
     }
 
     if (type === "CUSTOM_OUTDENT") {
-      console.log(type);
       const ev = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true });
       document.dispatchEvent(ev);
     }
 
     if (type === "INSERT_TABLE") {
       restoreSelection();
-
       const { rows = 2, cols = 2 } = e.data;
       let tableHtml = "<table style='border-collapse: collapse; width: 100%;'>";
       for (let r = 0; r < rows; r++) {
@@ -227,76 +339,57 @@ export function editorRuntimeInit() {
         tableHtml += "</tr>";
       }
       tableHtml += "</table><p><br></p>";
-
       document.execCommand("insertHTML", false, tableHtml);
       document.body.dispatchEvent(new Event("input"));
     }
   });
 
-  // ⌨️ Keyboard shortcuts & behaviors
+  // ⌨️ Keyboard shortcuts
   document.addEventListener("keydown", (ev: KeyboardEvent) => {
-    // 🔹 Custom single-line indent / outdent
     if (ev.key === "Tab") {
       ev.preventDefault();
       const sel = window.getSelection();
+      const caretBefore = getCaretPosition();
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
-
-      // Get current line or block
       const node = range.startContainer as Node;
       let el: HTMLElement | null = null;
       if (node.nodeType === Node.ELEMENT_NODE) el = node as HTMLElement;
       else if ((node as HTMLElement).parentElement)
         el = (node as HTMLElement).parentElement;
-
       const line = el?.closest(
         "p, div, pre, blockquote, li"
       ) as HTMLElement | null;
       if (!line) return;
 
-      // 🧠 Always work on the first text node
       let textNode: ChildNode | null = line.firstChild;
-      while (textNode && textNode.nodeType !== Node.TEXT_NODE) {
+      while (textNode && textNode.nodeType !== Node.TEXT_NODE)
         textNode = textNode.nextSibling;
-      }
-
-      // If no text node, create one
       if (!textNode) {
         textNode = document.createTextNode("");
         line.insertBefore(textNode, line.firstChild);
       }
 
-      // ➕ INDENT (Tab)
       if (!ev.shiftKey) {
-        const indent = "\u00A0\u00A0\u00A0\u00A0"; // 4 non-breaking spaces
-        // Insert spaces directly into first text node if caret is at start
-        if (range.startOffset === 0 && range.startContainer === textNode) {
+        const indent = "\u00A0\u00A0\u00A0\u00A0";
+        if (range.startOffset === 0 && range.startContainer === textNode)
           textNode.textContent = indent + textNode.textContent;
-        } else {
+        else {
           const indentNode = document.createTextNode(indent);
           range.insertNode(indentNode);
         }
-
-        // Move caret after indent
         const newRange = document.createRange();
         if (range.startContainer === textNode) newRange.setStart(textNode, 4);
         else newRange.setStartAfter(line.firstChild!);
         newRange.collapse(true);
         sel.removeAllRanges();
         sel.addRange(newRange);
-      }
-
-      // ➖ OUTDENT (Shift+Tab)
-      else {
+      } else {
         const firstText = textNode.textContent || "";
         const updated = firstText.replace(/^[\u00A0\s]{1,4}/, "");
         textNode.textContent = updated;
-
-        // Also handle accidental &nbsp; in HTML
         const html = line.innerHTML.replace(/^(&nbsp;|\s){1,4}/, "");
         if (line.innerHTML !== html) line.innerHTML = html || "<br>";
-
-        // Reset caret at beginning of cleaned line
         const newRange = document.createRange();
         if (line.firstChild) newRange.setStart(line.firstChild, 0);
         else newRange.selectNodeContents(line);
@@ -305,11 +398,11 @@ export function editorRuntimeInit() {
         sel.addRange(newRange);
       }
 
+      setCaretPosition(caretBefore);
       document.body.dispatchEvent(new Event("input"));
       return;
     }
 
-    // 🔹 Ctrl + B/I/U shortcuts
     if (ev.ctrlKey || ev.metaKey) {
       const k = ev.key.toLowerCase();
       if (k === "z") {
