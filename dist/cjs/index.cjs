@@ -93,6 +93,41 @@ function editorRuntimeInit() {
     s == null ? void 0 : s.removeAllRanges();
     s == null ? void 0 : s.addRange(lastRange);
   }
+  function getCaretPosition() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    const path = [];
+    let node = range.startContainer;
+    while (node && node !== document.body) {
+      const parentNode = node.parentNode;
+      if (!parentNode) break;
+      const childNodeList = Array.from(parentNode.childNodes);
+      const index = childNodeList.indexOf(node);
+      path.unshift(index);
+      node = parentNode;
+    }
+    return { path, offset: range.startOffset };
+  }
+  function setCaretPosition(pos) {
+    var _a;
+    if (!pos) return;
+    let node = document.body;
+    for (const index of pos.path) {
+      if (!(node == null ? void 0 : node.childNodes[index])) break;
+      node = node.childNodes[index];
+    }
+    if (!node) return;
+    const range = document.createRange();
+    try {
+      range.setStart(node, Math.min(pos.offset, ((_a = node.textContent) == null ? void 0 : _a.length) || 0));
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel == null ? void 0 : sel.removeAllRanges();
+      sel == null ? void 0 : sel.addRange(range);
+    } catch (e) {
+    }
+  }
   function send(type, payload = {}) {
     parent.postMessage(Object.assign({ type }, payload), "*");
   }
@@ -101,6 +136,53 @@ function editorRuntimeInit() {
   } else {
     window.addEventListener("DOMContentLoaded", notifyReadySafely);
   }
+  function ensureParagraphExists() {
+    const body = document.body;
+    const html = body.innerHTML.replace(/<br\s*\/?>/gi, "").replace(/<\/?p[^>]*>/gi, "").replace(/<\/?div[^>]*>/gi, "").replace(/&nbsp;/g, "").replace(/\s+/g, "").trim();
+    if (html.length === 0) {
+      body.innerHTML = "<p><br></p>";
+      const firstP = body.querySelector("p");
+      const range = document.createRange();
+      const sel = window.getSelection();
+      if (firstP) {
+        range.setStart(firstP, 0);
+        range.collapse(true);
+        sel == null ? void 0 : sel.removeAllRanges();
+        sel == null ? void 0 : sel.addRange(range);
+      }
+    }
+  }
+  function setupPlaceholder() {
+    const body = document.body;
+    function isVisuallyEmpty() {
+      const html = body.innerHTML.replace(/<br\s*\/?>/gi, "").replace(/<\/?p[^>]*>/gi, "").replace(/<\/?div[^>]*>/gi, "").replace(/&nbsp;/g, "").replace(/\s+/g, "").trim();
+      return html.length === 0;
+    }
+    function updatePlaceholder() {
+      if (isVisuallyEmpty()) body.classList.add("empty");
+      else body.classList.remove("empty");
+    }
+    const style = document.createElement("style");
+    style.textContent = `
+      body.empty::before {
+        content: attr(data-placeholder);
+        color: var(--editor-placeholder);
+        pointer-events: none;
+        position: absolute;
+        top: 0.75rem;
+        left: 0.75rem;
+        opacity: 0.6;
+      }
+    `;
+    document.head.appendChild(style);
+    body.addEventListener("input", updatePlaceholder);
+    body.addEventListener("focus", updatePlaceholder);
+    body.addEventListener("blur", updatePlaceholder);
+    updatePlaceholder();
+  }
+  setupPlaceholder();
+  ensureParagraphExists();
+  pushUndoState();
   document.addEventListener("selectionchange", () => {
     const payload = {
       block: document.queryCommandValue("formatBlock") || "P",
@@ -146,11 +228,16 @@ function editorRuntimeInit() {
     saveSelection();
   });
   function pushUndoState() {
-    const currentHTML = document.body.innerHTML;
-    if (undoStack.length === 0 || undoStack[undoStack.length - 1] !== currentHTML) {
-      undoStack.push(currentHTML);
-      redoStack.length = 0;
-    }
+    const runtimeScript = document.getElementById("__EDITOR_RUNTIME__");
+    const clone = document.body.cloneNode(true);
+    const runtimeClone = clone.querySelector("#__EDITOR_RUNTIME__");
+    if (runtimeClone) runtimeClone.remove();
+    const currentHTML = clone.innerHTML.trim();
+    const caret = getCaretPosition();
+    const last = undoStack[undoStack.length - 1];
+    if (last && typeof last === "object" && last.html === currentHTML) return;
+    undoStack.push({ html: currentHTML, caret });
+    redoStack.length = 0;
     send("UNDO_REDO_STATE", {
       canUndo: undoStack.length > 1,
       canRedo: redoStack.length > 0
@@ -161,8 +248,10 @@ function editorRuntimeInit() {
       const current = undoStack.pop();
       if (current) redoStack.push(current);
       const prev = undoStack[undoStack.length - 1];
-      document.body.innerHTML = prev;
-      send("UPDATE", { html: prev });
+      document.body.innerHTML = prev.html || "<p><br></p>";
+      ensureParagraphExists();
+      setCaretPosition(prev.caret || null);
+      send("UPDATE", { html: prev.html });
     }
     send("UNDO_REDO_STATE", {
       canUndo: undoStack.length > 1,
@@ -174,8 +263,10 @@ function editorRuntimeInit() {
       const next = redoStack.pop();
       if (next) {
         undoStack.push(next);
-        document.body.innerHTML = next;
-        send("UPDATE", { html: next });
+        document.body.innerHTML = next.html || "<p><br></p>";
+        ensureParagraphExists();
+        setCaretPosition(next.caret || null);
+        send("UPDATE", { html: next.html });
       }
     }
     send("UNDO_REDO_STATE", {
@@ -183,8 +274,8 @@ function editorRuntimeInit() {
       canRedo: redoStack.length > 0
     });
   }
-  pushUndoState();
   document.body.addEventListener("input", () => {
+    ensureParagraphExists();
     pushUndoState();
     send("UPDATE", { html: document.body.innerHTML });
   });
@@ -196,16 +287,9 @@ function editorRuntimeInit() {
   });
   window.addEventListener("message", (e) => {
     const { type, cmd, value, html, block } = e.data || {};
-    if (type === "EXEC" && cmd === "undo") {
-      doUndo();
-      return;
-    }
-    if (type === "EXEC" && cmd === "redo") {
-      doRedo();
-      return;
-    }
+    if (type === "EXEC" && cmd === "undo") return void doUndo();
+    if (type === "EXEC" && cmd === "redo") return void doRedo();
     if (type === "EXEC") {
-      console.log(type, cmd, value);
       restoreSelection();
       document.execCommand(cmd, false, value != null ? value : null);
       document.body.dispatchEvent(new Event("input"));
@@ -221,17 +305,15 @@ function editorRuntimeInit() {
       document.body.dispatchEvent(new Event("input"));
     }
     if (type === "SET_HTML") {
-      console.log(html);
       document.body.innerHTML = html || "";
+      ensureParagraphExists();
       document.body.dispatchEvent(new Event("input"));
     }
     if (type === "CUSTOM_INDENT") {
-      console.log(type);
       const ev = new KeyboardEvent("keydown", { key: "Tab" });
       document.dispatchEvent(ev);
     }
     if (type === "CUSTOM_OUTDENT") {
-      console.log(type);
       const ev = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true });
       document.dispatchEvent(ev);
     }
@@ -255,6 +337,7 @@ function editorRuntimeInit() {
     if (ev.key === "Tab") {
       ev.preventDefault();
       const sel = window.getSelection();
+      const caretBefore = getCaretPosition();
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
       const node = range.startContainer;
@@ -267,18 +350,17 @@ function editorRuntimeInit() {
       );
       if (!line) return;
       let textNode = line.firstChild;
-      while (textNode && textNode.nodeType !== Node.TEXT_NODE) {
+      while (textNode && textNode.nodeType !== Node.TEXT_NODE)
         textNode = textNode.nextSibling;
-      }
       if (!textNode) {
         textNode = document.createTextNode("");
         line.insertBefore(textNode, line.firstChild);
       }
       if (!ev.shiftKey) {
         const indent = "\xA0\xA0\xA0\xA0";
-        if (range.startOffset === 0 && range.startContainer === textNode) {
+        if (range.startOffset === 0 && range.startContainer === textNode)
           textNode.textContent = indent + textNode.textContent;
-        } else {
+        else {
           const indentNode = document.createTextNode(indent);
           range.insertNode(indentNode);
         }
@@ -301,6 +383,7 @@ function editorRuntimeInit() {
         sel.removeAllRanges();
         sel.addRange(newRange);
       }
+      setCaretPosition(caretBefore);
       document.body.dispatchEvent(new Event("input"));
       return;
     }
@@ -335,12 +418,13 @@ function editorRuntimeInit() {
 
 // src/core/engine.ts
 var EditorCore = class {
-  constructor(iframe, initialHTML = "<p>Start typing\u2026</p>") {
+  constructor(iframe, value = "", placeholder = "Write something...") {
     this.win = null;
     this.doc = null;
     this.html = "";
     this.isReady = false;
     this.listeners = {};
+    this.theme = "light";
     /**
      * 📡 Message handler for runtime communication.
      */
@@ -368,8 +452,14 @@ var EditorCore = class {
           break;
       }
     };
+    this.autoThemeHandler = (e) => {
+      const isDark = e.matches;
+      this.setTheme(isDark ? "dark" : "light");
+    };
     this.iframe = iframe;
-    this.html = initialHTML;
+    this.placeholder = placeholder;
+    const clean = (value || "").trim();
+    this.html = clean.length === 0 ? "<p><br></p>" : clean;
   }
   /**
    * 🚀 Initializes the editor iframe with full HTML + runtime.
@@ -391,22 +481,27 @@ var EditorCore = class {
       :root {
         --editor-bg: #ffffff;
         --editor-fg: #111111;
-        --editor-accent: #3b82f6; /* blue-500 */
-        --editor-placeholder: rgba(100, 116, 139, 0.6); /* slate-500 */
+        --editor-accent: #3b82f6;
+        --editor-placeholder: rgba(100, 116, 139, 0.6);
+        --editor-border: #e5e7eb;
+        --editor-code-bg: #f9fafb;
+        --editor-blockquote-border: #3b82f6;
+        --editor-hr: #d1d5db;
       }
 
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --editor-bg: #0a0a0a;
-          --editor-fg: #f8fafc;
-          --editor-accent: #60a5fa; /* lighter blue for dark bg */
-          --editor-placeholder: rgba(148, 163, 184, 0.6);
-        }
+      [data-theme="dark"] {
+        --editor-bg: #0a0a0a;
+        --editor-fg: #e5e7eb;
+        --editor-accent: #60a5fa;
+        --editor-placeholder: rgba(148, 163, 184, 0.6);
+        --editor-border: #1f2937;
+        --editor-code-bg: #111827;
+        --editor-blockquote-border: #60a5fa;
+        --editor-hr: #374151;
       }
 
       html, body {
         height: 100%;
-        min-height: 100%;
         margin: 0;
         padding: 0;
         box-sizing: border-box;
@@ -419,12 +514,15 @@ var EditorCore = class {
         transition: background-color 0.25s ease, color 0.25s ease;
       }
 
+      body {
+        padding: 0.75rem;
+      }
+      
       *, *::before, *::after {
         box-sizing: inherit;
       }
 
       body {
-        padding: 0.75rem;
         display: flex;
         flex-direction: column;
         caret-color: var(--editor-accent);
@@ -434,7 +532,6 @@ var EditorCore = class {
         outline: none;
       }
 
-      /* \u{1F447} Force caret (text cursor) to stay blue across all blocks */
       p, div, h1, h2, h3, h4, h5, h6, pre, blockquote, table, li {
         caret-color: var(--editor-accent);
       }
@@ -449,16 +546,23 @@ var EditorCore = class {
       }
 
       blockquote {
-        border-left: 3px solid var(--editor-accent);
+        border-left: 3px solid var(--editor-blockquote-border);
         padding-left: 1em;
         opacity: 0.9;
       }
 
       pre {
-        background: color-mix(in srgb, var(--editor-accent) 10%, transparent);
+        background: var(--editor-code-bg);
         padding: 0.6em;
         border-radius: 6px;
         font-family: ui-monospace, monospace;
+      }
+
+      hr {
+        border: none;
+        border-top: 1px solid var(--editor-hr);
+        margin: 1em 0;
+        opacity: 0.7;
       }
 
       table {
@@ -472,10 +576,14 @@ var EditorCore = class {
         padding: 6px;
       }
 
-      body:empty::before {
+      body.empty::before {
         content: attr(data-placeholder);
         color: var(--editor-placeholder);
         pointer-events: none;
+        position: absolute;
+        top: 0.75rem;
+        left: 0.75rem;
+        opacity: 0.6;
       }
 
       html, body {
@@ -483,7 +591,7 @@ var EditorCore = class {
       }
     </style>
   </head>
-  <body contenteditable="true" data-placeholder="Start typing..."></body>
+  <body contenteditable="true" data-placeholder="${this.placeholder}" data-empty="true"></body>
 </html>
 `;
     doc.open();
@@ -494,6 +602,7 @@ var EditorCore = class {
       if (!((_a = this.doc) == null ? void 0 : _a.body)) return;
       this.doc.body.innerHTML = this.html;
       const runtimeScript = this.doc.createElement("script");
+      runtimeScript.id = "__EDITOR_RUNTIME__";
       runtimeScript.type = "text/javascript";
       runtimeScript.textContent = `(${editorRuntimeInit.toString()})();`;
       this.doc.body.appendChild(runtimeScript);
@@ -515,35 +624,24 @@ var EditorCore = class {
     if (!this.win) return;
     this.win.postMessage(__spreadValues({ type }, payload), "*");
   }
-  /**
-   * 🧱 Replaces the entire iframe content with new HTML.
-   */
   fromHTML(html) {
     this.html = html;
     this.post("SET_HTML", { html });
   }
-  /**
-   * 💾 Returns current HTML.
-   */
   toHTML() {
     var _a, _b, _c;
     return ((_c = (_b = (_a = this.doc) == null ? void 0 : _a.body) == null ? void 0 : _b.innerHTML) == null ? void 0 : _c.trim()) || this.html;
   }
-  /**
-   * 🧩 Converts current DOM into structured JSON.
-   */
   toJSON() {
     if (!this.doc) return [];
     const root = this.doc.body;
     const traverse = (el) => {
       const node = { type: el.tagName.toLowerCase() };
-      if (el.childElementCount === 0) {
-        node.content = el.innerText;
-      } else {
+      if (el.childElementCount === 0) node.content = el.innerText;
+      else
         node.children = Array.from(el.children).map(
           (c) => traverse(c)
         );
-      }
       if (el.tagName.match(/^H[1-6]$/))
         node.attrs = { level: Number(el.tagName.replace("H", "")) };
       if (el.tagName === "A")
@@ -557,31 +655,96 @@ var EditorCore = class {
     };
     return Array.from(root.children).map((c) => traverse(c));
   }
-  /** ✅ Typed Event Registration */
   on(type, fn) {
-    if (!this.listeners[type]) {
-      this.listeners[type] = [];
-    }
+    if (!this.listeners[type]) this.listeners[type] = [];
     this.listeners[type].push(fn);
   }
-  /** ✅ Typed Event Emitter */
   emit(type, payload) {
     const handlers = this.listeners[type];
-    if (handlers) {
-      handlers.forEach((handler) => handler(payload));
+    if (handlers) handlers.forEach((handler) => handler(payload));
+  }
+  /**
+   * 🎨 Theme Setter — applies light, dark, or custom theme dynamically.
+   */
+  setTheme(theme) {
+    if (!this.doc) return;
+    this.theme = theme;
+    const htmlEl = this.doc.documentElement;
+    const styleEl = this.doc.getElementById("__EDITOR_THEME__") || this.doc.createElement("style");
+    styleEl.id = "__EDITOR_THEME__";
+    let css = `
+      :root {
+        --editor-bg: #ffffff;
+        --editor-fg: #111111;
+        --editor-accent: #3b82f6;
+        --editor-placeholder: rgba(100, 116, 139, 0.6);
+        --editor-border: #e5e7eb;
+        --editor-code-bg: #f9fafb;
+        --editor-blockquote-border: #3b82f6;
+        --editor-hr: #d1d5db;
+      }
+    `;
+    if (theme === "dark") {
+      htmlEl.setAttribute("data-theme", "dark");
+      css = `
+        :root {
+          --editor-bg: #0a0a0a;
+          --editor-fg: #e5e7eb;
+          --editor-accent: #60a5fa;
+          --editor-placeholder: rgba(148, 163, 184, 0.6);
+          --editor-border: #1f2937;
+          --editor-code-bg: #111827;
+          --editor-blockquote-border: #60a5fa;
+          --editor-hr: #374151;
+        }
+      `;
     }
+    if (typeof theme === "object" && theme !== null) {
+      htmlEl.removeAttribute("data-theme");
+      const customVars = Object.entries(theme).map(([key, val]) => `--${key}: ${val};`).join("\n");
+      css = `:root { ${customVars} }`;
+    }
+    styleEl.textContent = css;
+    this.doc.head.appendChild(styleEl);
+  }
+  /**
+   * 🌗 Enables automatic theme following system preference.
+   */
+  enableAutoTheme() {
+    if (this.autoThemeListener)
+      this.autoThemeListener.removeEventListener(
+        "change",
+        this.autoThemeHandler
+      );
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    this.autoThemeListener = mql;
+    console.log(mql);
+    this.setTheme(mql.matches ? "dark" : "light");
+    mql.addEventListener("change", this.autoThemeHandler);
   }
   /**
    * 🧹 Cleanup method for when editor is unmounted.
    */
   destroy() {
+    var _a;
     window.removeEventListener("message", this.handleMessage);
+    (_a = this.autoThemeListener) == null ? void 0 : _a.removeEventListener(
+      "change",
+      this.autoThemeHandler
+    );
     this.listeners = {};
     this.isReady = false;
     this.win = null;
     this.doc = null;
   }
 };
+
+// src/lib/utils.ts
+var import_clsx = require("clsx");
+var import_tailwind_merge = require("tailwind-merge");
+function cn(...inputs) {
+  return (0, import_tailwind_merge.twMerge)((0, import_clsx.clsx)(inputs));
+}
 
 // src/context/editor.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
@@ -618,7 +781,14 @@ var useEditor = () => {
   if (!ctx) throw new Error("useEditor must be used inside <EditorProvider>");
   return ctx;
 };
-var EditorProvider = ({ initialContent = "Start typing...", children, onChange }) => {
+var EditorProvider = ({
+  initialContent = "Start typing...",
+  children,
+  onChange,
+  placeholder,
+  style
+}) => {
+  var _a, _b, _c, _d, _e;
   const iframeRef = React.useRef(null);
   const [core, setCore] = React.useState(null);
   const [ctx, setCtx] = React.useState(defaultCtx);
@@ -629,7 +799,8 @@ var EditorProvider = ({ initialContent = "Start typing...", children, onChange }
     if (!iframeRef.current) return;
     const editor = new EditorCore(
       iframeRef.current,
-      `<p>${initialContent}</p>`
+      initialContent,
+      placeholder
     );
     editor.init();
     setCore(editor);
@@ -640,6 +811,9 @@ var EditorProvider = ({ initialContent = "Start typing...", children, onChange }
     });
     editor.on("context", (data) => {
       setCtx((prev) => __spreadValues(__spreadValues({}, prev), data));
+    });
+    editor.on("ready", () => {
+      editor.enableAutoTheme();
     });
     editor.on("undoRedo", (state) => {
       setCtx((prev) => __spreadProps(__spreadValues({}, prev), {
@@ -702,6 +876,30 @@ var EditorProvider = ({ initialContent = "Start typing...", children, onChange }
       isCodeBlock: block === "PRE"
     }));
   }, [core]);
+  const radiusClassMap = {
+    none: "rounded-none",
+    sm: "rounded-sm",
+    md: "rounded-md",
+    lg: "rounded-lg",
+    xl: "rounded-xl",
+    "2xl": "rounded-2xl",
+    "3xl": "rounded-3xl"
+  };
+  const shadowClassMap = {
+    none: "",
+    sm: "shadow-sm",
+    md: "shadow-md",
+    lg: "shadow-lg",
+    xl: "shadow-xl"
+  };
+  const borderWidth = (_b = (_a = style == null ? void 0 : style.border) == null ? void 0 : _a.width) != null ? _b : 1;
+  const borderRadius = (_d = (_c = style == null ? void 0 : style.border) == null ? void 0 : _c.radius) != null ? _d : "md";
+  const shadow = (_e = style == null ? void 0 : style.shadow) != null ? _e : "none";
+  const containerClass = cn(
+    "relative transition-all duration-200 ring-0 data-[focused=true]:ring-1 ring-blue-500/70 hover:border-blue-400 cursor-text border border-border",
+    radiusClassMap[borderRadius],
+    shadowClassMap[shadow]
+  );
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
     EditorContext.Provider,
     {
@@ -718,14 +916,29 @@ var EditorProvider = ({ initialContent = "Start typing...", children, onChange }
         "div",
         {
           "data-focused": isFocused,
-          className: "\n    relative border border-border rounded-sm \n    transition-all duration-200 ring-0 \n    data-[focused=true]:ring-1 ring-blue-500/70 shadow-sm\n    hover:border-blue-400 cursor-text\n  ",
+          style: {
+            height: typeof (style == null ? void 0 : style.height) === "string" ? style == null ? void 0 : style.height : `${style == null ? void 0 : style.height}px`,
+            borderWidth: `${borderWidth}px`
+          },
+          className: cn(containerClass, "overflow-hidden"),
           children: [
             children,
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "iframe",
               {
                 ref: iframeRef,
-                className: "\n      w-full h-[350px] border-0 rounded-b \n      bg-background cursor-text focus:cursor-text\n    ",
+                style: {
+                  height: (() => {
+                    const h = style == null ? void 0 : style.height;
+                    if (typeof h === "string") {
+                      if (h.includes("%")) return `calc(${h} - 42px)`;
+                      if (h.includes("px")) return `${parseFloat(h) - 42}px`;
+                    }
+                    if (typeof h === "number") return `${h - 42}px`;
+                    return "calc(100% - 42px)";
+                  })()
+                },
+                className: "w-full border-0 rounded-b bg-background cursor-text focus:cursor-text p-0",
                 sandbox: "allow-same-origin allow-scripts allow-forms allow-popups"
               }
             )
@@ -884,15 +1097,6 @@ function useEditorChain() {
 // src/components/ui/button.tsx
 var import_react_slot = require("@radix-ui/react-slot");
 var import_class_variance_authority = require("class-variance-authority");
-
-// src/lib/utils.ts
-var import_clsx = require("clsx");
-var import_tailwind_merge = require("tailwind-merge");
-function cn(...inputs) {
-  return (0, import_tailwind_merge.twMerge)((0, import_clsx.clsx)(inputs));
-}
-
-// src/components/ui/button.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var buttonVariants = (0, import_class_variance_authority.cva)(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
@@ -2009,7 +2213,21 @@ var SpinnerLoader = () => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("div", {
 // src/components/richtext/toolbar/ToolbarChain.tsx
 var React9 = __toESM(require("react"), 1);
 var import_lucide_react9 = require("lucide-react");
+
+// src/components/theme-provider.tsx
+var import_next_themes = require("next-themes");
 var import_jsx_runtime19 = require("react/jsx-runtime");
+function ThemeProvider(_a) {
+  var _b = _a, {
+    children
+  } = _b, props = __objRest(_b, [
+    "children"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(import_next_themes.ThemeProvider, __spreadProps(__spreadValues({}, props), { children }));
+}
+
+// src/components/richtext/toolbar/ToolbarChain.tsx
+var import_jsx_runtime20 = require("react/jsx-runtime");
 var ToolbarChain = ({ format }) => {
   const { iframeRef, ctx } = useEditor();
   const [chain, setChain] = React9.useState(null);
@@ -2022,63 +2240,82 @@ var ToolbarChain = ({ format }) => {
     }, 500);
     return () => clearInterval(timer);
   }, [iframeRef, chain]);
-  return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)(ToolbarWrapper, { className: "flex flex-wrap gap-2 border-b py-1 px-2", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(HistorySection, { ctx, size: "xs" }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(ToolbarButtonSeparator, { orientation: "vertical" }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(TextFormatSection, { ctx, size: "xs", format }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(StyleFormatSection, { ctx, size: "xs" }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(ToolbarButtonSeparator, { orientation: "vertical" }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(ListSelectorSection, { ctx, size: "xs" }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(IndentOutdentSection, { size: "xs", ctx }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(TextAlignerSection, { ctx, size: "xs" }),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
-      TablePicker,
-      {
-        variant: "outline",
-        size: "icon-xs",
-        onSelect: (rows, cols) => {
-          var _a, _b, _c;
-          const win = (_a = iframeRef.current) == null ? void 0 : _a.contentWindow;
-          const body = (_b = win == null ? void 0 : win.document) == null ? void 0 : _b.body;
-          body == null ? void 0 : body.focus();
-          (_c = chain == null ? void 0 : chain.insertTable(rows, cols)) == null ? void 0 : _c.run();
-        }
-      }
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
-      ToolbarButton,
-      {
-        toolButtonSize: "xs",
-        tooltip: "Add Divider",
-        onClick: () => {
-          var _a;
-          return (_a = chain == null ? void 0 : chain.insertHTML("<hr>")) == null ? void 0 : _a.run();
-        },
-        children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(import_lucide_react9.Minus, {})
-      }
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
-      ToolbarButton,
-      {
-        toolButtonSize: "xs",
-        tooltip: "Clear",
-        onClick: () => {
-          var _a;
-          return (_a = chain == null ? void 0 : chain.clear()) == null ? void 0 : _a.run();
-        },
-        children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(import_lucide_react9.Ban, {})
-      }
-    )
-  ] });
+  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+    ThemeProvider,
+    {
+      attribute: "class",
+      defaultTheme: "system",
+      enableSystem: true,
+      disableTransitionOnChange: true,
+      children: /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)(ToolbarWrapper, { className: "flex flex-wrap gap-2 border-b py-1 px-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(HistorySection, { ctx, size: "xs" }),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(ToolbarButtonSeparator, { orientation: "vertical" }),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(TextFormatSection, { ctx, size: "xs", format }),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(StyleFormatSection, { ctx, size: "xs" }),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(ToolbarButtonSeparator, { orientation: "vertical" }),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(ListSelectorSection, { ctx, size: "xs" }),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(IndentOutdentSection, { size: "xs", ctx }),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(TextAlignerSection, { ctx, size: "xs" }),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+          TablePicker,
+          {
+            variant: "outline",
+            size: "icon-xs",
+            onSelect: (rows, cols) => {
+              var _a, _b, _c;
+              const win = (_a = iframeRef.current) == null ? void 0 : _a.contentWindow;
+              const body = (_b = win == null ? void 0 : win.document) == null ? void 0 : _b.body;
+              body == null ? void 0 : body.focus();
+              (_c = chain == null ? void 0 : chain.insertTable(rows, cols)) == null ? void 0 : _c.run();
+            }
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+          ToolbarButton,
+          {
+            toolButtonSize: "xs",
+            tooltip: "Add Divider",
+            onClick: () => {
+              var _a;
+              return (_a = chain == null ? void 0 : chain.insertHTML("<hr>")) == null ? void 0 : _a.run();
+            },
+            children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react9.Minus, {})
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+          ToolbarButton,
+          {
+            toolButtonSize: "xs",
+            tooltip: "Clear",
+            onClick: () => {
+              var _a;
+              return (_a = chain == null ? void 0 : chain.clear()) == null ? void 0 : _a.run();
+            },
+            children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react9.Ban, {})
+          }
+        )
+      ] })
+    }
+  );
 };
 
 // src/components/richtext/editor.tsx
-var import_jsx_runtime20 = require("react/jsx-runtime");
+var import_jsx_runtime21 = require("react/jsx-runtime");
 var RichtextEditor = ({
   initialContent,
   loader = "shine",
   toolbar,
-  onChange
+  onChange,
+  placeholder,
+  style = {
+    height: "350px",
+    theme: "light",
+    border: {
+      width: 1,
+      radius: "md"
+    },
+    shadow: "md"
+  }
 }) => {
   const [isMount, setIsMount] = React10.useState(false);
   React10.useEffect(() => {
@@ -2095,16 +2332,25 @@ var RichtextEditor = ({
   if (!isMount) {
     switch (loader) {
       case "shine":
-        return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(EditorSkeleton, { animation: "shine" });
+        return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(EditorSkeleton, { animation: "shine" });
       case "skeleton":
-        return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(EditorSkeleton, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(EditorSkeleton, {});
       case "dots":
-        return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(DotsLoader, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(DotsLoader, {});
       default:
-        return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(SpinnerLoader, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(SpinnerLoader, {});
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(EditorProvider, { initialContent, onChange, children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(ToolbarChain, __spreadValues({}, toolbar)) });
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+    EditorProvider,
+    {
+      placeholder,
+      initialContent,
+      onChange,
+      style,
+      children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ToolbarChain, __spreadValues({}, toolbar))
+    }
+  );
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
