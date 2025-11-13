@@ -65,7 +65,7 @@ module.exports = __toCommonJS(index_exports);
 var import_globals = require("./globals.css");
 
 // src/components/richtext/editor.tsx
-var React10 = __toESM(require("react"), 1);
+var React12 = __toESM(require("react"), 1);
 
 // src/context/editor.tsx
 var React = __toESM(require("react"), 1);
@@ -75,6 +75,192 @@ function editorRuntimeInit() {
   let lastRange = null;
   const undoStack = [];
   const redoStack = [];
+  const RESIZE_SENSITIVITY = 0.35;
+  function insertTable(rows = 2, cols = 2) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "editor-table-wrapper";
+    wrapper.style.position = "relative";
+    wrapper.style.width = "100%";
+    const table = document.createElement("table");
+    table.style.borderCollapse = "collapse";
+    table.style.width = "100%";
+    table.style.tableLayout = "fixed";
+    wrapper.appendChild(table);
+    for (let r = 0; r < rows; r++) {
+      const tr = document.createElement("tr");
+      for (let c = 0; c < cols; c++) {
+        const td = document.createElement("td");
+        td.style.border = "1px solid #ccc";
+        td.style.padding = "6px";
+        td.innerHTML = "<br>";
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+    document.execCommand(
+      "insertHTML",
+      false,
+      wrapper.outerHTML + "<p><br></p>"
+    );
+    setTimeout(() => {
+      const tbl = document.body.querySelector(
+        "table:last-of-type"
+      );
+      if (tbl) {
+        equalizeColumns(tbl);
+        addTableResizeHandles(tbl);
+      }
+    }, 15);
+  }
+  function equalizeColumns(table) {
+    const first = table.rows[0];
+    if (!first) return;
+    const count = first.cells.length;
+    const pct = 100 / count;
+    for (let r = 0; r < table.rows.length; r++) {
+      for (let c = 0; c < count; c++) {
+        table.rows[r].cells[c].style.width = pct + "%";
+      }
+    }
+  }
+  function addTableResizeHandles(table) {
+    const wrapper = table.parentElement;
+    wrapper.style.position = "relative";
+    wrapper.querySelectorAll(".table-resize-handle").forEach((n) => n.remove());
+    const rect = () => table.getBoundingClientRect();
+    const wrapRect = () => wrapper.getBoundingClientRect();
+    function makeHandle(handle) {
+      const el = document.createElement("div");
+      el.className = "table-resize-handle";
+      el.dataset.handle = handle;
+      el.addEventListener(
+        "mouseenter",
+        () => wrapper.classList.add("table-active-border")
+      );
+      el.addEventListener(
+        "mouseleave",
+        () => wrapper.classList.remove("table-active-border")
+      );
+      wrapper.appendChild(el);
+      el.style.position = "absolute";
+      return el;
+    }
+    const colLeft = makeHandle("col-left");
+    const colRight = makeHandle("col-right");
+    const rowTop = makeHandle("row-top");
+    const rowBottom = makeHandle("row-bottom");
+    const cornerTL = makeHandle("corner-tl");
+    const cornerTR = makeHandle("corner-tr");
+    const cornerBL = makeHandle("corner-bl");
+    const cornerBR = makeHandle("corner-br");
+    function position() {
+      const r = rect();
+      const w = wrapRect();
+      const cornerSize = 12;
+      colLeft.style.left = r.left - w.left - 2 + "px";
+      colLeft.style.top = "0px";
+      colLeft.style.width = "2px";
+      colLeft.style.height = table.offsetHeight + "px";
+      colLeft.style.cursor = "col-resize";
+      colRight.style.left = r.right - w.left - 2 + "px";
+      colRight.style.top = "0px";
+      colRight.style.width = "2px";
+      colRight.style.height = table.offsetHeight + "px";
+      colRight.style.cursor = "col-resize";
+      rowTop.style.top = r.top - w.top - 2 + "px";
+      rowTop.style.left = "0px";
+      rowTop.style.height = "2px";
+      rowTop.style.width = table.offsetWidth + "px";
+      rowTop.style.cursor = "row-resize";
+      rowBottom.style.top = r.bottom - w.top - 2 + "px";
+      rowBottom.style.left = "0px";
+      rowBottom.style.height = "2px";
+      rowBottom.style.width = table.offsetWidth + "px";
+      rowBottom.style.cursor = "row-resize";
+      cornerTL.style.left = r.left - w.left - cornerSize / 2 + "px";
+      cornerTL.style.top = r.top - w.top - cornerSize / 2 + "px";
+      cornerTL.style.width = cornerSize + "px";
+      cornerTL.style.height = cornerSize + "px";
+      cornerTL.style.cursor = "nwse-resize";
+      cornerTR.style.left = r.right - w.left - cornerSize / 2 + "px";
+      cornerTR.style.top = r.top - w.top - cornerSize / 2 + "px";
+      cornerTR.style.width = cornerSize + "px";
+      cornerTR.style.height = cornerSize + "px";
+      cornerTR.style.cursor = "nesw-resize";
+      cornerBL.style.left = r.left - w.left - cornerSize / 2 + "px";
+      cornerBL.style.top = r.bottom - w.top - cornerSize / 2 + "px";
+      cornerBL.style.width = cornerSize + "px";
+      cornerBL.style.height = cornerSize + "px";
+      cornerBL.style.cursor = "nesw-resize";
+      cornerBR.style.left = r.right - w.left - cornerSize / 2 + "px";
+      cornerBR.style.top = r.bottom - w.top - cornerSize / 2 + "px";
+      cornerBR.style.width = cornerSize + "px";
+      cornerBR.style.height = cornerSize + "px";
+      cornerBR.style.cursor = "nwse-resize";
+    }
+    position();
+    new ResizeObserver(position).observe(table);
+    let active = null;
+    let startX = 0;
+    let startY = 0;
+    let startW = 0;
+    let startRowHeight = 0;
+    wrapper.addEventListener("mousedown", (e) => {
+      var _a;
+      const target = (_a = e.target) == null ? void 0 : _a.closest(
+        ".table-resize-handle"
+      );
+      if (!target) return;
+      active = target.dataset.handle;
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = table.offsetWidth;
+      startRowHeight = table.rows[0].cells[0].offsetHeight;
+      e.preventDefault();
+      document.addEventListener("mousemove", doDrag);
+      document.addEventListener("mouseup", stopDrag);
+    });
+    function doDrag(e) {
+      if (!active) return;
+      const rawDx = e.clientX - startX;
+      const rawDy = e.clientY - startY;
+      const dx = rawDx * RESIZE_SENSITIVITY;
+      const dy = rawDy * RESIZE_SENSITIVITY;
+      if (active === "col-right") {
+        table.style.width = Math.max(80, startW + dx) + "px";
+      }
+      if (active === "col-left") {
+        table.style.width = Math.max(80, startW - dx) + "px";
+      }
+      if (active === "row-bottom") {
+        const newH = Math.max(20, startRowHeight + dy);
+        resizeRows(newH);
+      }
+      if (active === "row-top") {
+        const newH = Math.max(20, startRowHeight - dy);
+        resizeRows(newH);
+      }
+      if (active.startsWith("corner")) {
+        const newW = Math.max(80, startW + dx);
+        const newH = Math.max(20, startRowHeight + dy);
+        table.style.width = newW + "px";
+        resizeRows(newH);
+      }
+      position();
+    }
+    function resizeRows(h) {
+      for (const row of table.rows) {
+        for (const cell of row.cells) {
+          cell.style.height = h + "px";
+        }
+      }
+    }
+    function stopDrag() {
+      active = null;
+      document.removeEventListener("mousemove", doDrag);
+      document.removeEventListener("mouseup", stopDrag);
+    }
+  }
   function notifyReadySafely() {
     const check = setInterval(() => {
       if (document.body && document.body.isContentEditable) {
@@ -127,6 +313,15 @@ function editorRuntimeInit() {
       sel == null ? void 0 : sel.addRange(range);
     } catch (e) {
     }
+  }
+  function closestElement(node, selectors) {
+    if (!node) return null;
+    let el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    while (el) {
+      if (el.matches(selectors)) return el;
+      el = el.parentElement;
+    }
+    return null;
   }
   function send(type, payload = {}) {
     parent.postMessage(Object.assign({ type }, payload), "*");
@@ -184,6 +379,35 @@ function editorRuntimeInit() {
   ensureParagraphExists();
   pushUndoState();
   document.addEventListener("selectionchange", () => {
+    const sel = window.getSelection();
+    let isLink = false;
+    try {
+      isLink = document.queryCommandState("createLink");
+    } catch (e) {
+      isLink = false;
+    }
+    if (sel && sel.anchorNode) {
+      const anchorElement = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
+      if (anchorElement) {
+        const linkParent = anchorElement.closest("a");
+        if (linkParent) isLink = true;
+      }
+    }
+    function isInside(tagNames) {
+      const sel2 = window.getSelection();
+      if (!sel2 || sel2.rangeCount === 0) return false;
+      let node = sel2.anchorNode;
+      if (!node) return false;
+      if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+      while (node && node !== document.body) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toUpperCase();
+          if (tagNames.includes(tag)) return true;
+        }
+        node = node.parentNode;
+      }
+      return false;
+    }
     const payload = {
       block: document.queryCommandValue("formatBlock") || "P",
       bold: document.queryCommandState("bold"),
@@ -195,11 +419,13 @@ function editorRuntimeInit() {
       justifyLeft: document.queryCommandState("justifyLeft"),
       justifyCenter: document.queryCommandState("justifyCenter"),
       justifyRight: document.queryCommandState("justifyRight"),
-      link: document.queryCommandState("createLink"),
       foreColor: document.queryCommandValue("foreColor"),
       backColor: document.queryCommandValue("hiliteColor")
     };
-    const sel = window.getSelection();
+    payload.bold = isInside(["B", "STRONG"]);
+    payload.italic = isInside(["I", "EM"]);
+    payload.underline = isInside(["U"]);
+    payload.strike = isInside(["S", "STRIKE"]);
     let isIndented = false;
     if (sel && sel.anchorNode) {
       const el = (sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement) || null;
@@ -214,6 +440,7 @@ function editorRuntimeInit() {
       }
     }
     payload.isIndented = isIndented;
+    payload.link = isLink;
     const blk = String(payload.block).toUpperCase();
     payload.isHeading1 = blk === "H1";
     payload.isHeading2 = blk === "H2";
@@ -274,6 +501,27 @@ function editorRuntimeInit() {
       canRedo: redoStack.length > 0
     });
   }
+  function breakInlineFormatting() {
+    var _a;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return;
+    const container = range.startContainer;
+    const styledParent = closestElement(
+      container,
+      "b,strong,i,em,u,span[style]"
+    );
+    if (styledParent) {
+      const after = document.createTextNode("");
+      (_a = styledParent.parentNode) == null ? void 0 : _a.insertBefore(after, styledParent.nextSibling);
+      const newRange = document.createRange();
+      newRange.setStart(after, 0);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    }
+  }
   document.body.addEventListener("input", () => {
     ensureParagraphExists();
     pushUndoState();
@@ -292,6 +540,7 @@ function editorRuntimeInit() {
     if (type === "EXEC") {
       restoreSelection();
       document.execCommand(cmd, false, value != null ? value : null);
+      breakInlineFormatting();
       document.body.dispatchEvent(new Event("input"));
     }
     if (type === "FORMAT_BLOCK") {
@@ -319,21 +568,37 @@ function editorRuntimeInit() {
     }
     if (type === "INSERT_TABLE") {
       restoreSelection();
-      const { rows = 2, cols = 2 } = e.data;
-      let tableHtml = "<table style='border-collapse: collapse; width: 100%;'>";
-      for (let r = 0; r < rows; r++) {
-        tableHtml += "<tr>";
-        for (let c = 0; c < cols; c++) {
-          tableHtml += "<td style='border: 1px solid #ccc; padding: 6px;'><br></td>";
-        }
-        tableHtml += "</tr>";
-      }
-      tableHtml += "</table><p><br></p>";
-      document.execCommand("insertHTML", false, tableHtml);
+      insertTable(e.data.rows, e.data.cols);
       document.body.dispatchEvent(new Event("input"));
     }
   });
   document.addEventListener("keydown", (ev) => {
+    var _a;
+    if (ev.key === "Enter") {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed) return;
+      const container = range.startContainer.nodeType === Node.TEXT_NODE ? range.startContainer.parentElement : range.startContainer;
+      const styledParent = closestElement(
+        container,
+        "b,strong,i,em,u,span[style]"
+      );
+      if (styledParent) {
+        ev.preventDefault();
+        const newP = document.createElement("p");
+        newP.innerHTML = "<br>";
+        const currentBlock = styledParent.closest("p,div,li,blockquote,pre");
+        (_a = currentBlock == null ? void 0 : currentBlock.parentNode) == null ? void 0 : _a.insertBefore(newP, currentBlock.nextSibling);
+        const newRange = document.createRange();
+        newRange.setStart(newP, 0);
+        newRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+        document.body.dispatchEvent(new Event("input"));
+        return;
+      }
+    }
     if (ev.key === "Tab") {
       ev.preventDefault();
       const sel = window.getSelection();
@@ -487,6 +752,7 @@ var EditorCore = class {
         --editor-code-bg: #f9fafb;
         --editor-blockquote-border: #3b82f6;
         --editor-hr: #d1d5db;
+        --tbl-highlight: #3b82f6;
       }
 
       [data-theme="dark"] {
@@ -518,6 +784,75 @@ var EditorCore = class {
         padding: 0.75rem;
       }
       
+      
+      /* -----------------------------------------------------
+        PREMIUM EDITOR SCROLL EXPERIENCE
+        Inspired by Linear + macOS floating overlays
+      ------------------------------------------------------ */
+
+      /* Base variables (auto-adapt to light/dark) */
+      * {
+        --scroll-thumb: color-mix(in srgb, var(--editor-fg) 40%, transparent 60%);
+        --scroll-thumb-hover: color-mix(in srgb, var(--editor-fg) 55%, transparent 45%);
+        --scroll-track: color-mix(in srgb, var(--editor-bg) 85%, transparent 15%);
+      }
+
+      /* Firefox support */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+      }
+
+      /* WebKit scrollbars */
+      *::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+        background: transparent;
+      }
+
+      /* Floating, softened track */
+      *::-webkit-scrollbar-track {
+        background: transparent; /* invisible track */
+      }
+
+      /* Floating thumb */
+      *::-webkit-scrollbar-thumb {
+        background: var(--scroll-thumb);
+        border-radius: 999px;
+        opacity: 0;
+        transition: opacity 0.25s ease, background-color 0.25s ease;
+      }
+
+      /* Hover \u2192 thumb brightens */
+      *::-webkit-scrollbar-thumb:hover {
+        background: var(--scroll-thumb-hover);
+      }
+
+      /* Only show thumb while scrolling or hovering */
+      html:hover::-webkit-scrollbar-thumb,
+      body:hover::-webkit-scrollbar-thumb {
+        opacity: 1;
+      }
+
+      /* Smooth fade-in on scroll */
+      ::-webkit-scrollbar-thumb {
+        animation: fadeOutScrollbar 1.5s forwards;
+      }
+
+      @keyframes fadeOutScrollbar {
+        0% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+
+      /* Fix corner on both axes */
+      *::-webkit-scrollbar-corner {
+        background: transparent;
+      }
+
       *, *::before, *::after {
         box-sizing: inherit;
       }
@@ -588,6 +923,50 @@ var EditorCore = class {
 
       html, body {
         transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
+      }
+      
+      /* Highlight LEFT edge */
+      .editor-table-wrapper.handle-left-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+        clip-path: inset(0 calc(100% - 2px) 0 0);
+      }
+
+      /* Highlight RIGHT edge */
+      .editor-table-wrapper.handle-right-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+        clip-path: inset(0 0 0 calc(100% - 2px));
+      }
+
+      /* Highlight TOP edge */
+      .editor-table-wrapper.handle-top-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+        clip-path: inset(calc(100% - 2px) 0 0 0);
+      }
+
+      /* Highlight BOTTOM edge */
+      .editor-table-wrapper.handle-bottom-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+        clip-path: inset(0 0 calc(100% - 2px) 0);
+      }
+
+      /* Highlight corners (full frame) */
+      .editor-table-wrapper.handle-corner-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+      }
+
+      /* Highlight full table border when a handle is hovered */
+      .editor-table-wrapper.table-active-border table {
+        outline: 2px solid #3b82f6;
+        outline-offset: -2px;
+      }
+
+      .editor-table-wrapper table {
+        transition: outline-color 0.15s ease;
       }
     </style>
   </head>
@@ -786,7 +1165,8 @@ var EditorProvider = ({
   children,
   onChange,
   placeholder,
-  style
+  style,
+  theme
 }) => {
   var _a, _b, _c, _d, _e;
   const iframeRef = React.useRef(null);
@@ -813,7 +1193,11 @@ var EditorProvider = ({
       setCtx((prev) => __spreadValues(__spreadValues({}, prev), data));
     });
     editor.on("ready", () => {
-      editor.enableAutoTheme();
+      if (theme) {
+        editor.setTheme(theme);
+      } else {
+        editor.enableAutoTheme();
+      }
     });
     editor.on("undoRedo", (state) => {
       setCtx((prev) => __spreadProps(__spreadValues({}, prev), {
@@ -823,6 +1207,40 @@ var EditorProvider = ({
     });
     return () => editor.destroy();
   }, [iframeRef, onChange, initialContent]);
+  React.useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const handleMouseEnter = () => {
+      const evt = new CustomEvent("editor-iframe-enter");
+      window.dispatchEvent(evt);
+    };
+    iframe.addEventListener("mouseenter", handleMouseEnter);
+    return () => {
+      iframe.removeEventListener("mouseenter", handleMouseEnter);
+    };
+  }, []);
+  React.useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const register = () => {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      doc.addEventListener("mousedown", () => {
+        window.dispatchEvent(new Event("editor-iframe-click"));
+      });
+      doc.addEventListener("touchstart", () => {
+        window.dispatchEvent(new Event("editor-iframe-click"));
+      });
+    };
+    const interval = setInterval(() => {
+      var _a2;
+      if ((_a2 = iframe.contentDocument) == null ? void 0 : _a2.body) {
+        register();
+        clearInterval(interval);
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
   React.useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -1099,15 +1517,15 @@ var import_react_slot = require("@radix-ui/react-slot");
 var import_class_variance_authority = require("class-variance-authority");
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var buttonVariants = (0, import_class_variance_authority.cva)(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive: "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
-        outline: "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+        destructive: "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20",
+        outline: "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         primary: "bg-blue-600 hover:bg-blue-600/70 text-white"
       },
@@ -1231,42 +1649,196 @@ function TooltipContent(_a) {
 
 // src/components/richtext/toolbar/toolbar.tsx
 var React3 = __toESM(require("react"), 1);
+var import_lucide_react = require("lucide-react");
 var import_jsx_runtime5 = require("react/jsx-runtime");
-var ToolbarWrapper = React3.forwardRef(
-  (_a, ref) => {
-    var _b = _a, { children, className } = _b, props = __objRest(_b, ["children", "className"]);
-    return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
-      "div",
-      __spreadProps(__spreadValues({
-        ref,
-        className: cn(
-          "flex items-center transform transition ease-in-out duration-300",
-          className
+var EdgeIndicator = ({
+  direction,
+  visible,
+  shadowIntensity,
+  onClick
+}) => {
+  const Icon = direction === "left" ? import_lucide_react.ChevronLeft : import_lucide_react.ChevronRight;
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+    "div",
+    {
+      className: cn(
+        "absolute top-0 bottom-0 z-30 flex items-center justify-center transition-all duration-300 w-8",
+        direction === "left" ? "left-0 bg-gradient-to-r from-background via-background/80 to-transparent" : "right-0 bg-gradient-to-l from-background via-background/80 to-transparent",
+        visible ? "opacity-100" : "opacity-0 pointer-events-none"
+      ),
+      children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+        "button",
+        {
+          onClick,
+          className: cn(
+            "w-6 h-6 rounded-md flex items-center justify-center transition-all duration-200",
+            "bg-background border border-border shadow-sm hover:bg-accent hover:scale-110",
+            "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+          ),
+          "aria-label": `Scroll ${direction}`,
+          children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Icon, { className: "w-3.5 h-3.5 text-muted-foreground" })
+        }
+      )
+    }
+  );
+};
+var ToolbarWrapper = React3.forwardRef((_a, ref) => {
+  var _b = _a, { children, className } = _b, props = __objRest(_b, ["children", "className"]);
+  const containerRef = React3.useRef(null);
+  const [showLeft, setShowLeft] = React3.useState(false);
+  const [showRight, setShowRight] = React3.useState(false);
+  const [hovered, setHovered] = React3.useState(false);
+  const [shadowIntensity, setShadowIntensity] = React3.useState(0);
+  const [isDragging, setIsDragging] = React3.useState(false);
+  const updateOverflow = React3.useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setShowLeft(scrollLeft > 5);
+    setShowRight(scrollLeft < scrollWidth - clientWidth - 5);
+  }, []);
+  React3.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let isDown = false;
+    let startX = 0;
+    let scrollStart = 0;
+    const onDown = (e) => {
+      isDown = true;
+      setIsDragging(true);
+      startX = e.pageX;
+      scrollStart = el.scrollLeft;
+      el.style.cursor = "grabbing";
+      el.style.userSelect = "none";
+    };
+    const onUp = () => {
+      isDown = false;
+      setIsDragging(false);
+      el.style.cursor = "grab";
+      el.style.userSelect = "auto";
+    };
+    const onMove = (e) => {
+      if (!isDown) return;
+      const diff = (e.pageX - startX) * 1.6;
+      el.scrollLeft = scrollStart - diff;
+      updateOverflow();
+    };
+    el.addEventListener("mousedown", onDown);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mousemove", onMove);
+    return () => {
+      el.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mousemove", onMove);
+    };
+  }, [updateOverflow]);
+  React3.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let lastScroll = el.scrollLeft;
+    let lastTime = Date.now();
+    let velocity = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      const currentScroll = el.scrollLeft;
+      const deltaTime = now - lastTime;
+      if (deltaTime > 0) {
+        velocity = Math.abs(currentScroll - lastScroll) / deltaTime;
+        setShadowIntensity(Math.min(velocity * 20, 1));
+      }
+      lastScroll = currentScroll;
+      lastTime = now;
+      updateOverflow();
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [updateOverflow]);
+  const scrollBy = (amount) => {
+    var _a2;
+    (_a2 = containerRef.current) == null ? void 0 : _a2.scrollBy({
+      left: amount,
+      behavior: "smooth"
+    });
+  };
+  const enhancedChildren = React3.Children.map(children, (child) => {
+    if (!React3.isValidElement(child)) return child;
+    return React3.cloneElement(child, {
+      className: cn(
+        child.props.className,
+        "transition-all duration-200"
+      )
+    });
+  });
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(
+    "div",
+    {
+      className: "relative w-full overflow-hidden group",
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+          EdgeIndicator,
+          {
+            direction: "left",
+            visible: showLeft && hovered,
+            shadowIntensity,
+            onClick: () => scrollBy(-200)
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+          "div",
+          __spreadProps(__spreadValues({
+            ref: (node) => {
+              containerRef.current = node;
+              if (typeof ref === "function") ref(node);
+              else if (ref) ref.current = node;
+            },
+            className: cn(
+              "flex items-center gap-1 overflow-x-auto px-3 py-2 scroll-smooth hide-scrollbar",
+              "overflow-y-hidden select-none touch-pan-x",
+              "bg-background/95 backdrop-blur-sm border-b",
+              isDragging ? "cursor-grabbing" : "cursor-grab",
+              "transition-all duration-300",
+              className
+            ),
+            style: {
+              scrollbarWidth: "none",
+              msOverflowStyle: "none"
+            }
+          }, props), {
+            children: enhancedChildren
+          })
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+          EdgeIndicator,
+          {
+            direction: "right",
+            visible: showRight && hovered,
+            shadowIntensity,
+            onClick: () => scrollBy(200)
+          }
         )
-      }, props), {
-        children
-      })
-    );
-  }
-);
+      ]
+    }
+  );
+});
 ToolbarWrapper.displayName = "ToolbarWrapper";
-var ToolbarGroup = React3.forwardRef(
-  (_a, ref) => {
-    var _b = _a, { children, className } = _b, props = __objRest(_b, ["children", "className"]);
-    return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
-      "div",
-      __spreadProps(__spreadValues({
-        ref,
-        className: cn(
-          "flex items-center gap-1 transform transition ease-in-out duration-300",
-          className
-        )
-      }, props), {
-        children
-      })
-    );
-  }
-);
+var ToolbarGroup = React3.forwardRef((_a, ref) => {
+  var _b = _a, { children, className } = _b, props = __objRest(_b, ["children", "className"]);
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+    "div",
+    __spreadProps(__spreadValues({
+      ref,
+      className: cn(
+        "flex items-center gap-1 px-1 first:pl-0 last:pr-0",
+        "transition-all duration-300",
+        className
+      )
+    }, props), {
+      children
+    })
+  );
+});
 ToolbarGroup.displayName = "ToolbarGroup";
 var ToolbarButtonSeparator = ({
   orientation = "vertical"
@@ -1276,8 +1848,13 @@ var ToolbarButtonSeparator = ({
     {
       orientation,
       role: "separator",
-      style: { height: "2rem" },
-      className: "border border-border border-l-0 border-y-0 w-px"
+      style: {
+        height: "1.75rem"
+      },
+      className: cn(
+        "h-6 mx-1 bg-border/60",
+        orientation === "vertical" ? "w-px" : "h-px w-full"
+      )
     }
   );
 };
@@ -1289,49 +1866,95 @@ var ToolbarButton = React3.forwardRef(
       active = false,
       toolButtonSize = "sm",
       tooltip,
-      className
+      className,
+      disabled
     } = _b, props = __objRest(_b, [
       "children",
       "onClick",
       "active",
       "toolButtonSize",
       "tooltip",
-      "className"
+      "className",
+      "disabled"
     ]);
+    const [open, setOpen] = React3.useState(false);
+    const [isPressed, setIsPressed] = React3.useState(false);
+    React3.useEffect(() => {
+      const closeTooltip = () => setOpen(false);
+      window.addEventListener("editor-iframe-enter", closeTooltip);
+      return () => window.removeEventListener("editor-iframe-enter", closeTooltip);
+    }, []);
     const sizeClasses = {
-      sm: { style: "px-3 py-1 rounded-sm", size: "icon-sm" },
-      md: { style: "px-4 py-2 rounded-md", size: "icon" },
-      xs: { style: "px-2 py-0.5 rounded", size: "icon-xs" }
+      xs: "h-7 w-7 rounded-md text-xs",
+      sm: "h-8 w-8 rounded-md text-sm",
+      md: "h-9 w-9 rounded-lg text-base"
     };
-    const { style, size } = sizeClasses[toolButtonSize];
-    const button = /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+    const handleMouseDown = (e) => {
+      e.preventDefault();
+      setIsPressed(true);
+    };
+    const handleMouseUp = () => {
+      setIsPressed(false);
+    };
+    const handleClick = (e) => {
+      setIsPressed(false);
+      onClick == null ? void 0 : onClick(e);
+    };
+    const button = /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(
       Button,
       __spreadProps(__spreadValues({
-        size,
-        onMouseDown: (e) => e.preventDefault(),
-        onClick,
-        variant: "outline",
+        size: "icon",
+        onMouseDown: handleMouseDown,
+        onMouseUp: handleMouseUp,
+        onMouseLeave: handleMouseUp,
+        onClick: handleClick,
+        variant: "ghost",
         ref,
+        disabled,
         "data-active": active,
+        "data-pressed": isPressed,
         className: cn(
-          `rounded border cursor-pointer text-sm disabled:cursor-not-allowed data-[active=true]:bg-accent data-[active=true]:text-foreground text-foreground/80 hover:text-foreground`,
-          className,
-          style
+          sizeClasses[toolButtonSize],
+          "relative transition-all duration-200",
+          "border border-transparent hover:border-border/50",
+          "bg-background hover:bg-accent/50 active:bg-accent",
+          "shadow-sm hover:shadow-md active:shadow-sm",
+          "focus:outline-none focus:ring-0 focus:ring-offset-0",
+          "disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none",
+          active && "bg-accent text-accent-foreground border-border/30",
+          isPressed && "scale-95 bg-accent",
+          className
         )
       }, props), {
-        children
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+            "div",
+            {
+              className: cn(
+                "transition-transform duration-200",
+                isPressed && "scale-90"
+              ),
+              children
+            }
+          ),
+          active && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-primary rounded-full" })
+        ]
       })
     );
     if (!tooltip) return button;
-    return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(TooltipProvider, { delayDuration: 250, children: /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(Tooltip, { children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(TooltipProvider, { delayDuration: 300, children: /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(Tooltip, { open: open && !disabled, onOpenChange: setOpen, children: [
       /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(TooltipTrigger, { asChild: true, children: button }),
-      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(
         TooltipContent,
         {
           side: "top",
-          align: "end",
-          className: "text-xs font-medium",
-          children: tooltip
+          align: "center",
+          className: "text-xs font-medium px-2 py-1 bg-foreground text-background",
+          sideOffset: 8,
+          children: [
+            tooltip,
+            /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("kbd", { className: "ml-1 text-xs opacity-70", children: "\u2318" })
+          ]
         }
       )
     ] }) });
@@ -1340,14 +1963,14 @@ var ToolbarButton = React3.forwardRef(
 ToolbarButton.displayName = "ToolbarButton";
 
 // src/components/richtext/ui/history.tsx
-var import_lucide_react = require("lucide-react");
+var import_lucide_react2 = require("lucide-react");
 var import_jsx_runtime6 = require("react/jsx-runtime");
 var HistorySection = ({
   ctx,
   size = "sm"
 }) => {
   const { execute } = useEditorChain();
-  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(ToolbarGroup, { children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
       ToolbarButton,
       {
@@ -1356,7 +1979,7 @@ var HistorySection = ({
         onClick: () => execute("undo"),
         toolButtonSize: size,
         className: "rounded",
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(import_lucide_react.Undo2, {})
+        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(import_lucide_react2.Undo2, {})
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
@@ -1367,7 +1990,7 @@ var HistorySection = ({
         disabled: !ctx.canRedo,
         onClick: () => execute("redo"),
         className: "rounded",
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(import_lucide_react.Redo2, {})
+        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(import_lucide_react2.Redo2, {})
       }
     )
   ] });
@@ -1380,7 +2003,7 @@ var IndentOutdentSection = ({
   size
 }) => {
   const { execute } = useEditorChain();
-  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(ToolbarGroup, { children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       ToolbarButton,
       {
@@ -1443,14 +2066,14 @@ var Outdent = (_a) => {
 };
 
 // src/components/richtext/ui/list-selector.tsx
-var import_lucide_react2 = require("lucide-react");
+var import_lucide_react3 = require("lucide-react");
 var import_jsx_runtime8 = require("react/jsx-runtime");
 var ListSelectorSection = ({
   ctx,
   size = "sm"
 }) => {
   const { execute } = useEditorChain();
-  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(ToolbarGroup, { children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(import_jsx_runtime8.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       ToolbarButton,
       {
@@ -1458,7 +2081,7 @@ var ListSelectorSection = ({
         active: ctx.unorderedList,
         toolButtonSize: size,
         tooltip: "Unordered List",
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(import_lucide_react2.List, {})
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(import_lucide_react3.List, {})
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
@@ -1468,111 +2091,124 @@ var ListSelectorSection = ({
         active: ctx.orderedList,
         toolButtonSize: size,
         tooltip: "Ordered List",
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(import_lucide_react2.ListOrdered, {})
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(import_lucide_react3.ListOrdered, {})
       }
     )
   ] });
 };
 
-// src/components/ui/popover.tsx
-var PopoverPrimitive = __toESM(require("@radix-ui/react-popover"), 1);
+// src/components/richtext/ui/table-picker.tsx
+var import_lucide_react6 = require("lucide-react");
+var React4 = __toESM(require("react"), 1);
+
+// src/components/ui/dialog.tsx
+var DialogPrimitive = __toESM(require("@radix-ui/react-dialog"), 1);
+var import_lucide_react4 = require("lucide-react");
 var import_jsx_runtime9 = require("react/jsx-runtime");
-function Popover(_a) {
+function Dialog(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PopoverPrimitive.Root, __spreadValues({ "data-slot": "popover" }, props));
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(DialogPrimitive.Root, __spreadValues({ "data-slot": "dialog" }, props));
 }
-function PopoverTrigger(_a) {
+function DialogTrigger(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PopoverPrimitive.Trigger, __spreadValues({ "data-slot": "popover-trigger" }, props));
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(DialogPrimitive.Trigger, __spreadValues({ "data-slot": "dialog-trigger" }, props));
 }
-function PopoverContent(_a) {
+function DialogPortal(_a) {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(DialogPrimitive.Portal, __spreadValues({ "data-slot": "dialog-portal" }, props));
+}
+function DialogOverlay(_a) {
   var _b = _a, {
-    className,
-    align = "center",
-    sideOffset = 4
+    className
   } = _b, props = __objRest(_b, [
-    "className",
-    "align",
-    "sideOffset"
+    "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(PopoverPrimitive.Portal, { children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-    PopoverPrimitive.Content,
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+    DialogPrimitive.Overlay,
     __spreadValues({
-      "data-slot": "popover-content",
-      align,
-      sideOffset,
+      "data-slot": "dialog-overlay",
       className: cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border p-4 shadow-md outline-hidden",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
         className
       )
     }, props)
-  ) });
+  );
 }
-
-// src/components/richtext/ui/table-picker.tsx
-var import_lucide_react3 = require("lucide-react");
-var React4 = __toESM(require("react"), 1);
-var import_jsx_runtime10 = require("react/jsx-runtime");
-var TablePicker = React4.forwardRef((_a, ref) => {
-  var _b = _a, { onSelect } = _b, buttonProps = __objRest(_b, ["onSelect"]);
-  const [open, setOpen] = React4.useState(false);
-  const [table, setTable] = React4.useState({ rows: 2, cols: 2 });
-  const maxRows = 10;
-  const maxCols = 10;
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(Popover, { open, onOpenChange: setOpen, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-      ToolbarButton,
+function DialogContent(_a) {
+  var _b = _a, {
+    className,
+    children,
+    showCloseButton = true
+  } = _b, props = __objRest(_b, [
+    "className",
+    "children",
+    "showCloseButton"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(DialogPortal, { "data-slot": "dialog-portal", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(DialogOverlay, {}),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+      DialogPrimitive.Content,
       __spreadProps(__spreadValues({
-        ref,
-        toolButtonSize: "xs",
-        tooltip: "Insert Table",
-        "data-active": open
-      }, buttonProps), {
-        children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(import_lucide_react3.Table, {})
+        "data-slot": "dialog-content",
+        className: cn(
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
+          className
+        )
+      }, props), {
+        children: [
+          children,
+          showCloseButton && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+            DialogPrimitive.Close,
+            {
+              "data-slot": "dialog-close",
+              className: "ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(import_lucide_react4.XIcon, {}),
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "sr-only", children: "Close" })
+              ]
+            }
+          )
+        ]
       })
-    ) }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(PopoverContent, { children: [
-      Array.from({ length: maxRows }).map((_, r) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "flex space-y-0.5 space-x-0.5 mx-auto w-full", children: Array.from({ length: maxCols }).map((_2, c) => {
-        const active = r <= table.rows && c <= table.cols;
-        return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-          "div",
-          {
-            onMouseEnter: () => setTable({ rows: r, cols: c }),
-            onClick: () => {
-              onSelect == null ? void 0 : onSelect(r + 1, c + 1);
-              setOpen(false);
-            },
-            "data-active": active,
-            className: `w-5 h-5 border cursor-pointer bg-transparent hover:bg-gray-200 data-[active=true]:ring-1 data-[active=true]:ring-blue-500 data-[active=true]:bg-accent`
-          },
-          c
-        );
-      }) }, r)),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Separator, { className: "w-full" }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "text-xs text-muted-foreground mt-2", children: [
-        table.rows + 1,
-        " \xD7 ",
-        table.cols + 1
-      ] })
-    ] })
+    )
   ] });
-});
-TablePicker.displayName = "TablePicker";
-
-// src/components/richtext/ui/text-aligner.tsx
-var React5 = __toESM(require("react"), 1);
+}
+function DialogHeader(_a) {
+  var _b = _a, { className } = _b, props = __objRest(_b, ["className"]);
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+    "div",
+    __spreadValues({
+      "data-slot": "dialog-header",
+      className: cn("flex flex-col gap-2 text-center sm:text-left", className)
+    }, props)
+  );
+}
+function DialogTitle(_a) {
+  var _b = _a, {
+    className
+  } = _b, props = __objRest(_b, [
+    "className"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+    DialogPrimitive.Title,
+    __spreadValues({
+      "data-slot": "dialog-title",
+      className: cn("text-lg leading-none font-semibold", className)
+    }, props)
+  );
+}
 
 // src/components/ui/dropdown-menu.tsx
 var DropdownMenuPrimitive = __toESM(require("@radix-ui/react-dropdown-menu"), 1);
-var import_lucide_react4 = require("lucide-react");
-var import_jsx_runtime11 = require("react/jsx-runtime");
+var import_lucide_react5 = require("lucide-react");
+var import_jsx_runtime10 = require("react/jsx-runtime");
 function DropdownMenu(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(DropdownMenuPrimitive.Root, __spreadValues({ "data-slot": "dropdown-menu" }, props));
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(DropdownMenuPrimitive.Root, __spreadValues({ "data-slot": "dropdown-menu" }, props));
 }
 function DropdownMenuTrigger(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
     DropdownMenuPrimitive.Trigger,
     __spreadValues({
       "data-slot": "dropdown-menu-trigger"
@@ -1587,7 +2223,7 @@ function DropdownMenuContent(_a) {
     "className",
     "sideOffset"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(DropdownMenuPrimitive.Portal, { children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(DropdownMenuPrimitive.Portal, { children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
     DropdownMenuPrimitive.Content,
     __spreadValues({
       "data-slot": "dropdown-menu-content",
@@ -1599,6 +2235,10 @@ function DropdownMenuContent(_a) {
     }, props)
   ) });
 }
+function DropdownMenuGroup(_a) {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(DropdownMenuPrimitive.Group, __spreadValues({ "data-slot": "dropdown-menu-group" }, props));
+}
 function DropdownMenuItem(_a) {
   var _b = _a, {
     className,
@@ -1609,7 +2249,7 @@ function DropdownMenuItem(_a) {
     "inset",
     "variant"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
     DropdownMenuPrimitive.Item,
     __spreadValues({
       "data-slot": "dropdown-menu-item",
@@ -1623,9 +2263,208 @@ function DropdownMenuItem(_a) {
   );
 }
 
-// src/components/richtext/ui/text-aligner.tsx
-var import_lucide_react5 = require("lucide-react");
+// src/components/ui/input.tsx
+var import_jsx_runtime11 = require("react/jsx-runtime");
+function Input(_a) {
+  var _b = _a, { className, type } = _b, props = __objRest(_b, ["className", "type"]);
+  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+    "input",
+    __spreadValues({
+      type,
+      "data-slot": "input",
+      className: cn(
+        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+        "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+        className
+      )
+    }, props)
+  );
+}
+
+// src/components/ui/label.tsx
+var LabelPrimitive = __toESM(require("@radix-ui/react-label"), 1);
 var import_jsx_runtime12 = require("react/jsx-runtime");
+function Label2(_a) {
+  var _b = _a, {
+    className
+  } = _b, props = __objRest(_b, [
+    "className"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+    LabelPrimitive.Root,
+    __spreadValues({
+      "data-slot": "label",
+      className: cn(
+        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        className
+      )
+    }, props)
+  );
+}
+
+// src/components/ui/skeleton.tsx
+var import_jsx_runtime13 = require("react/jsx-runtime");
+function Skeleton(_a) {
+  var _b = _a, { className } = _b, props = __objRest(_b, ["className"]);
+  return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
+    "div",
+    __spreadValues({
+      "data-slot": "skeleton",
+      className: cn("bg-accent animate-pulse rounded-md", className)
+    }, props)
+  );
+}
+
+// src/components/ui/switch.tsx
+var SwitchPrimitive = __toESM(require("@radix-ui/react-switch"), 1);
+var import_jsx_runtime14 = require("react/jsx-runtime");
+function Switch(_a) {
+  var _b = _a, {
+    className
+  } = _b, props = __objRest(_b, [
+    "className"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
+    SwitchPrimitive.Root,
+    __spreadProps(__spreadValues({
+      "data-slot": "switch",
+      className: cn(
+        "peer data-[state=checked]:bg-primary data-[state=unchecked]:bg-input focus-visible:border-ring focus-visible:ring-ring/50 dark:data-[state=unchecked]:bg-input/80 inline-flex h-[1.15rem] w-8 shrink-0 items-center rounded-full border border-transparent shadow-xs transition-all outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
+        className
+      )
+    }, props), {
+      children: /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
+        SwitchPrimitive.Thumb,
+        {
+          "data-slot": "switch-thumb",
+          className: cn(
+            "bg-background dark:data-[state=unchecked]:bg-foreground dark:data-[state=checked]:bg-primary-foreground pointer-events-none block size-4 rounded-full ring-0 transition-transform data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=unchecked]:translate-x-0"
+          )
+        }
+      )
+    })
+  );
+}
+
+// src/components/ui/tabs.tsx
+var TabsPrimitive = __toESM(require("@radix-ui/react-tabs"), 1);
+var import_jsx_runtime15 = require("react/jsx-runtime");
+function Tabs(_a) {
+  var _b = _a, {
+    className
+  } = _b, props = __objRest(_b, [
+    "className"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+    TabsPrimitive.Root,
+    __spreadValues({
+      "data-slot": "tabs",
+      className: cn("flex flex-col gap-2", className)
+    }, props)
+  );
+}
+function TabsList(_a) {
+  var _b = _a, {
+    className
+  } = _b, props = __objRest(_b, [
+    "className"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+    TabsPrimitive.List,
+    __spreadValues({
+      "data-slot": "tabs-list",
+      className: cn(
+        "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]",
+        className
+      )
+    }, props)
+  );
+}
+function TabsTrigger(_a) {
+  var _b = _a, {
+    className
+  } = _b, props = __objRest(_b, [
+    "className"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+    TabsPrimitive.Trigger,
+    __spreadValues({
+      "data-slot": "tabs-trigger",
+      className: cn(
+        "data-[state=active]:bg-accent data-[state=active]:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )
+    }, props)
+  );
+}
+function TabsContent(_a) {
+  var _b = _a, {
+    className
+  } = _b, props = __objRest(_b, [
+    "className"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+    TabsPrimitive.Content,
+    __spreadValues({
+      "data-slot": "tabs-content",
+      className: cn("flex-1 outline-none", className)
+    }, props)
+  );
+}
+
+// src/components/richtext/ui/table-picker.tsx
+var import_jsx_runtime16 = require("react/jsx-runtime");
+var TablePicker = React4.forwardRef((_a, ref) => {
+  var _b = _a, { onSelect } = _b, buttonProps = __objRest(_b, ["onSelect"]);
+  const [open, setOpen] = React4.useState(false);
+  const [table, setTable] = React4.useState({ rows: 2, cols: 2 });
+  const maxRows = 10;
+  const maxCols = 10;
+  return /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)(DropdownMenu, { open, onOpenChange: setOpen, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+      ToolbarButton,
+      __spreadProps(__spreadValues({
+        ref,
+        toolButtonSize: "xs",
+        tooltip: "Insert Table",
+        "data-active": open
+      }, buttonProps), {
+        children: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(import_lucide_react6.Table, {})
+      })
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)(DropdownMenuContent, { children: [
+      Array.from({ length: maxRows }).map((_, r) => /* @__PURE__ */ (0, import_jsx_runtime16.jsx)("div", { className: "flex space-y-0.5 space-x-0.5 mx-auto w-full", children: Array.from({ length: maxCols }).map((_2, c) => {
+        const active = r <= table.rows && c <= table.cols;
+        return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+          "div",
+          {
+            onMouseEnter: () => setTable({ rows: r, cols: c }),
+            onClick: () => {
+              onSelect == null ? void 0 : onSelect(r + 1, c + 1);
+              setOpen(false);
+            },
+            "data-active": active,
+            className: `w-5 h-5 border cursor-pointer bg-transparent hover:bg-gray-200 data-[active=true]:ring-1 data-[active=true]:ring-blue-500 data-[active=true]:bg-accent`
+          },
+          c
+        );
+      }) }, r)),
+      /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(Separator, { className: "w-full" }),
+      /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)("div", { className: "text-xs text-muted-foreground mt-2", children: [
+        table.rows + 1,
+        " \xD7 ",
+        table.cols + 1
+      ] })
+    ] })
+  ] });
+});
+TablePicker.displayName = "TablePicker";
+
+// src/components/richtext/ui/text-aligner.tsx
+var React5 = __toESM(require("react"), 1);
+var import_lucide_react7 = require("lucide-react");
+var import_jsx_runtime17 = require("react/jsx-runtime");
 var TextAlignerSection = (_a) => {
   var _b = _a, {
     size = "sm",
@@ -1641,25 +2480,25 @@ var TextAlignerSection = (_a) => {
     {
       cmd: "alignLeft",
       tooltip: "Align Left",
-      icon: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(import_lucide_react5.TextAlignStart, { className: "w-4 h-4" }),
+      icon: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(import_lucide_react7.TextAlignStart, { className: "w-4 h-4" }),
       active: ctx == null ? void 0 : ctx.justifyLeft
     },
     {
       cmd: "alignCenter",
       tooltip: "Align Center",
-      icon: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(import_lucide_react5.TextAlignCenter, { className: "w-4 h-4" }),
+      icon: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(import_lucide_react7.TextAlignCenter, { className: "w-4 h-4" }),
       active: ctx == null ? void 0 : ctx.justifyCenter
     },
     {
       cmd: "alignRight",
       tooltip: "Align Right",
-      icon: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(import_lucide_react5.TextAlignEnd, { className: "w-4 h-4" }),
+      icon: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(import_lucide_react7.TextAlignEnd, { className: "w-4 h-4" }),
       active: ctx == null ? void 0 : ctx.justifyRight
     }
   ];
-  const activeAlign = ((_a2 = alignOptions.find((a) => a.active)) == null ? void 0 : _a2.icon) || /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(import_lucide_react5.TextAlignStart, { className: "w-4 h-4" });
-  return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(DropdownMenu, { open: _open, onOpenChange: _setOpen, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+  const activeAlign = ((_a2 = alignOptions.find((a) => a.active)) == null ? void 0 : _a2.icon) || /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(import_lucide_react7.TextAlignStart, { className: "w-4 h-4" });
+  return /* @__PURE__ */ (0, import_jsx_runtime17.jsxs)(DropdownMenu, { open: _open, onOpenChange: _setOpen, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
       ToolbarButton,
       __spreadProps(__spreadValues({}, props), {
         tooltip: "Text Alignment",
@@ -1668,12 +2507,12 @@ var TextAlignerSection = (_a) => {
         children: activeAlign
       })
     ) }),
-    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
       DropdownMenuContent,
       {
         align: "center",
         className: "flex gap-1 p-2 min-w-0 bg-background/95 backdrop-blur-md rounded shadow-sm border",
-        children: alignOptions.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+        children: alignOptions.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
           ToolbarButton,
           {
             tooltip: opt.tooltip,
@@ -1694,15 +2533,15 @@ var TextAlignerSection = (_a) => {
 
 // src/components/richtext/ui/text-format.tsx
 var React6 = __toESM(require("react"), 1);
-var import_lucide_react6 = require("lucide-react");
-var import_jsx_runtime13 = require("react/jsx-runtime");
+var import_lucide_react8 = require("lucide-react");
+var import_jsx_runtime18 = require("react/jsx-runtime");
 var allFormats = [
   {
     type: "heading",
     cmd: "heading",
     args: [1],
     tooltip: "Heading 1",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Heading1, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Heading1, {}),
     activeKey: "isHeading1",
     style: "text-3xl font-bold leading-tight tracking-tight text-foreground"
   },
@@ -1711,7 +2550,7 @@ var allFormats = [
     cmd: "heading",
     args: [2],
     tooltip: "Heading 2",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Heading2, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Heading2, {}),
     activeKey: "isHeading2",
     style: "text-2xl font-semibold leading-snug tracking-tight text-foreground"
   },
@@ -1720,7 +2559,7 @@ var allFormats = [
     cmd: "heading",
     args: [3],
     tooltip: "Heading 3",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Heading3, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Heading3, {}),
     activeKey: "isHeading3",
     style: "text-xl font-semibold leading-snug text-foreground"
   },
@@ -1729,7 +2568,7 @@ var allFormats = [
     cmd: "heading",
     args: [4],
     tooltip: "Heading 4",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Heading4, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Heading4, {}),
     activeKey: "isHeading4",
     style: "text-lg font-medium leading-relaxed text-foreground"
   },
@@ -1738,7 +2577,7 @@ var allFormats = [
     cmd: "heading",
     args: [5],
     tooltip: "Heading 5",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Heading5, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Heading5, {}),
     activeKey: "isHeading5",
     style: "text-base font-medium leading-relaxed text-foreground"
   },
@@ -1747,7 +2586,7 @@ var allFormats = [
     cmd: "heading",
     args: [6],
     tooltip: "Heading 6",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Heading6, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Heading6, {}),
     activeKey: "isHeading6",
     style: "text-sm font-semibold uppercase tracking-wide text-muted-foreground"
   },
@@ -1755,7 +2594,7 @@ var allFormats = [
     type: "paragraph",
     cmd: "paragraph",
     tooltip: "Paragraph",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Pilcrow, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Pilcrow, {}),
     activeKey: "isParagraph",
     style: "text-base leading-relaxed text-muted-foreground max-w-prose truncate"
   },
@@ -1763,7 +2602,7 @@ var allFormats = [
     type: "blockquote",
     cmd: "quote",
     tooltip: "Blockquote",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Quote, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Quote, {}),
     activeKey: "isBlockquote",
     style: "text-base italic border-l-2 border-muted pl-3 text-muted-foreground leading-relaxed"
   },
@@ -1771,7 +2610,7 @@ var allFormats = [
     type: "code",
     cmd: "codeBlock",
     tooltip: "Code Block",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Code, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Code, {}),
     activeKey: "isCodeBlock",
     style: "text-sm font-mono bg-muted rounded px-2 py-1 text-foreground truncate"
   }
@@ -1813,34 +2652,34 @@ var TextFormatSection = ({
     md: "px-3 h-9 text-base gap-2",
     xs: "px-1.5 h-7 text-xs gap-1"
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)(DropdownMenu, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)(Tooltip, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(DropdownMenu, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(Tooltip, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(
         DropdownMenuTrigger,
         {
           className: `flex items-center justify-between gap-1 border border-border rounded ${sizeClasses[size]} text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring focus:outline-none min-w-[6rem]`,
           children: [
             currentLabel,
-            /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.ChevronDown, { className: "w-4 h-4 opacity-70", strokeWidth: 2 })
+            /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.ChevronDown, { className: "w-4 h-4 opacity-70", strokeWidth: 2 })
           ]
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(TooltipContent, { side: "bottom", children: "Select Text format" })
+      /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(TooltipContent, { side: "top", children: "Select Text format" })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(DropdownMenuContent, { align: "center", className: "min-w-10 space-y-0.5", children: visibleFormats.map((btn) => {
+    /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(DropdownMenuContent, { align: "center", className: "min-w-10 space-y-0.5", children: visibleFormats.map((btn) => {
       const active = Boolean(ctx[btn.activeKey]);
-      return /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)(
+      return /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(
         DropdownMenuItem,
         {
           onClick: () => execute(btn.cmd, ...btn.args || []),
           "data-active": active,
           className: `flex hover:bg-muted/70 data-[active=true]:text-accent-foreground data-[active=true]:bg-accent items-center justify-between gap-2 px-2 py-1.5 cursor-pointer transition-colors ease-in-out duration-150`,
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime13.jsxs)("span", { className: cn("flex items-center gap-2", btn == null ? void 0 : btn.style), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)("span", { className: cn("flex items-center gap-2", btn == null ? void 0 : btn.style), children: [
               btn.icon,
               btn.tooltip
             ] }),
-            active && /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_lucide_react6.Check, { className: "w-4 h-4 text-blue-500" })
+            active && /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(import_lucide_react8.Check, { className: "w-4 h-4 text-blue-500" })
           ]
         },
         btn.tooltip
@@ -1851,81 +2690,13 @@ var TextFormatSection = ({
 
 // src/components/richtext/ui/text-style.tsx
 var React8 = __toESM(require("react"), 1);
-var import_lucide_react8 = require("lucide-react");
+var import_lucide_react10 = require("lucide-react");
 
 // src/components/richtext/ui/color-picker.tsx
 var React7 = __toESM(require("react"), 1);
 var import_react_color = require("react-color");
-var import_lucide_react7 = require("lucide-react");
-
-// src/components/ui/tabs.tsx
-var TabsPrimitive = __toESM(require("@radix-ui/react-tabs"), 1);
-var import_jsx_runtime14 = require("react/jsx-runtime");
-function Tabs(_a) {
-  var _b = _a, {
-    className
-  } = _b, props = __objRest(_b, [
-    "className"
-  ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
-    TabsPrimitive.Root,
-    __spreadValues({
-      "data-slot": "tabs",
-      className: cn("flex flex-col gap-2", className)
-    }, props)
-  );
-}
-function TabsList(_a) {
-  var _b = _a, {
-    className
-  } = _b, props = __objRest(_b, [
-    "className"
-  ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
-    TabsPrimitive.List,
-    __spreadValues({
-      "data-slot": "tabs-list",
-      className: cn(
-        "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]",
-        className
-      )
-    }, props)
-  );
-}
-function TabsTrigger(_a) {
-  var _b = _a, {
-    className
-  } = _b, props = __objRest(_b, [
-    "className"
-  ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
-    TabsPrimitive.Trigger,
-    __spreadValues({
-      "data-slot": "tabs-trigger",
-      className: cn(
-        "data-[state=active]:bg-background dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )
-    }, props)
-  );
-}
-function TabsContent(_a) {
-  var _b = _a, {
-    className
-  } = _b, props = __objRest(_b, [
-    "className"
-  ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
-    TabsPrimitive.Content,
-    __spreadValues({
-      "data-slot": "tabs-content",
-      className: cn("flex-1 outline-none", className)
-    }, props)
-  );
-}
-
-// src/components/richtext/ui/color-picker.tsx
-var import_jsx_runtime15 = require("react/jsx-runtime");
+var import_lucide_react9 = require("lucide-react");
+var import_jsx_runtime19 = require("react/jsx-runtime");
 var ColorHighlighter = React7.forwardRef(
   (_a, ref) => {
     var _b = _a, {
@@ -1949,58 +2720,66 @@ var ColorHighlighter = React7.forwardRef(
     ]);
     const [isOpen, setIsOpen] = React7.useState(false);
     const [tempColor, setTempColor] = React7.useState(color || "#000000");
-    const IconComponent = icon || import_lucide_react7.Check;
+    const IconComponent = icon || import_lucide_react9.Check;
     const handleChange = (clr) => {
       setTempColor(clr.hex);
     };
+    React7.useEffect(() => {
+      const close = () => setIsOpen(false);
+      window.addEventListener("editor-iframe-click", close);
+      return () => window.removeEventListener("editor-iframe-click", close);
+    }, []);
     const handleComplete = (clr) => {
       setTempColor(clr.hex);
       onChange == null ? void 0 : onChange(clr.hex);
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(Popover, { open: isOpen, onOpenChange: setIsOpen, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
-        PopoverTrigger,
-        {
-          className: cn(
-            "px-0.5 p-0 flex items-center data-[state=open]:bg-accent",
-            className
-          ),
+    return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)(DropdownMenu, { open: isOpen, onOpenChange: setIsOpen, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
+        ToolbarButton,
+        __spreadProps(__spreadValues({
+          "data-active": isOpen,
+          className,
           ref,
           disabled,
-          asChild: true,
-          children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(ToolbarButton, __spreadProps(__spreadValues({ toolButtonSize: size, tooltip: "Color" }, props), { children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(IconComponent, { color: "currentColor" }) }))
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
-        PopoverContent,
+          toolButtonSize: size,
+          tooltip: "Color",
+          onClick: () => setIsOpen(!isOpen)
+        }, props), {
+          children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(IconComponent, { color: "currentColor" })
+        })
+      ) }),
+      /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
+        DropdownMenuContent,
         {
           className: "p-2 w-[260px] bg-background shadow-lg border border-border rounded",
           align: "end",
-          children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)(
             Tabs,
             {
               value: isBack,
               onValueChange: (value) => onChangeIsBackground == null ? void 0 : onChangeIsBackground(value),
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(TabsList, { className: "w-full rounded bg-accent", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)(TabsList, { className: "w-full rounded border border-border bg-background", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
                     TabsTrigger,
                     {
+                      "data-active": isBack === "text",
                       value: "text",
                       className: "w-full cursor-pointer rounded",
                       children: "Text"
                     }
                   ),
-                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                  /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
                     TabsTrigger,
                     {
+                      "data-active": isBack === "background",
                       value: "background",
                       className: "w-full cursor-pointer rounded",
                       children: "Background"
                     }
                   )
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(TabsContent, { value: "text", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(TabsContent, { value: "text", children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
                   Picker,
                   {
                     handleChange,
@@ -2008,7 +2787,7 @@ var ColorHighlighter = React7.forwardRef(
                     color: tempColor
                   }
                 ) }),
-                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(TabsContent, { value: "background", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(TabsContent, { value: "background", children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
                   Picker,
                   {
                     handleChange,
@@ -2030,7 +2809,7 @@ function Picker({
   handleComplete,
   color
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
     import_react_color.SketchPicker,
     {
       color,
@@ -2095,13 +2874,13 @@ function Picker({
 }
 
 // src/components/richtext/ui/text-style.tsx
-var import_jsx_runtime16 = require("react/jsx-runtime");
+var import_jsx_runtime20 = require("react/jsx-runtime");
 var styleButtons = [
   {
     type: "bold",
     cmd: "bold",
     tooltip: "Bold",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(import_lucide_react8.Bold, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react10.Bold, {}),
     activeKey: "bold",
     action_type: "button"
   },
@@ -2109,7 +2888,7 @@ var styleButtons = [
     type: "italic",
     cmd: "italic",
     tooltip: "Italic",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(import_lucide_react8.Italic, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react10.Italic, {}),
     activeKey: "italic",
     action_type: "button"
   },
@@ -2117,7 +2896,7 @@ var styleButtons = [
     type: "underline",
     cmd: "underline",
     tooltip: "Underline",
-    icon: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(import_lucide_react8.Underline, {}),
+    icon: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react10.Underline, {}),
     activeKey: "underline",
     action_type: "button"
   }
@@ -2133,8 +2912,8 @@ var StyleFormatSection = ({
     const cmd = isBackground === "text" ? "color" : "highlight";
     execute(cmd, color);
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)(ToolbarGroup, { children: [
-    styleButtons.map((btn) => /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)(import_jsx_runtime20.Fragment, { children: [
+    styleButtons.map((btn) => /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
       ToolbarButton,
       {
         tooltip: btn.tooltip,
@@ -2145,12 +2924,12 @@ var StyleFormatSection = ({
       },
       btn.type
     )),
-    highlighter && /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+    highlighter && /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
       ColorHighlighter,
       {
         size: "xs",
         color: ctx.foreColor,
-        icon: import_lucide_react8.Palette,
+        icon: import_lucide_react10.Palette,
         onChange: handleUpdateColor,
         isBack: isBackground,
         onChangeIsBackground: () => setIsBackground(isBackground === "text" ? "background" : "text")
@@ -2159,157 +2938,677 @@ var StyleFormatSection = ({
   ] });
 };
 
-// src/components/ui/skeleton.tsx
-var import_jsx_runtime17 = require("react/jsx-runtime");
-function Skeleton(_a) {
-  var _b = _a, { className } = _b, props = __objRest(_b, ["className"]);
-  return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
-    "div",
-    __spreadValues({
-      "data-slot": "skeleton",
-      className: cn("bg-accent animate-pulse rounded-md", className)
-    }, props)
-  );
-}
-
 // src/components/richtext/ui/loader.tsx
-var import_jsx_runtime18 = require("react/jsx-runtime");
+var import_jsx_runtime21 = require("react/jsx-runtime");
 var EditorSkeleton = ({
   animation = "pulse"
 }) => {
   const base = "w-full bg-muted";
   const animationClass = animation === "shine" ? "relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.5s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/30 before:to-transparent" : "animate-pulse";
-  return /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
     "div",
     {
       className: `border border-border w-full rounded-md overflow-hidden bg-background ${animationClass}`,
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)("div", { className: "flex items-center gap-2 relative px-2 py-1", children: [
-          [1, 2, 3, 4, 5, 6, 7, 8].map((width) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex items-center gap-2 relative px-2 py-1", children: [
+          [1, 2, 3, 4, 5, 6, 7, 8].map((width) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
             Skeleton,
             {
               className: `${base} h-7 ${width === 3 ? "w-16 lg:w-20" : "w-7 lg:w-8"}  lg:h-8`
             },
             width
           )),
-          /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(Skeleton, { className: "absolute right-1" })
+          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Skeleton, { className: "absolute right-1" })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("div", { className: "h-px bg-border" }),
-        /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("div", { className: `${base} h-64` })
+        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "h-px bg-border" }),
+        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: `${base} h-64` })
       ]
     }
   );
 };
-var DotsLoader = () => /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)("div", { className: "flex flex-col items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: [
-  /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)("div", { className: "flex space-x-2", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" }),
-    /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" }),
-    /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce" })
+var DotsLoader = () => /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex flex-col items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: [
+  /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex space-x-2", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" }),
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" }),
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "w-3 h-3 bg-gray-400 rounded-full animate-bounce" })
   ] }),
-  /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("p", { className: "text-xs text-muted-foreground mt-3", children: "Loading editor..." })
+  /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("p", { className: "text-xs text-muted-foreground mt-3", children: "Loading editor..." })
 ] });
-var SpinnerLoader = () => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("div", { className: "flex items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("div", { className: "w-6 h-6 border-4 border-gray-300 border-t-gray-700 rounded-full animate-spin" }) });
+var SpinnerLoader = () => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "flex items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "w-6 h-6 border-4 border-gray-300 border-t-gray-700 rounded-full animate-spin" }) });
 
 // src/components/richtext/toolbar/ToolbarChain.tsx
-var React9 = __toESM(require("react"), 1);
-var import_lucide_react9 = require("lucide-react");
+var React11 = __toESM(require("react"), 1);
+var import_lucide_react13 = require("lucide-react");
 
 // src/components/theme-provider.tsx
 var import_next_themes = require("next-themes");
-var import_jsx_runtime19 = require("react/jsx-runtime");
+var import_jsx_runtime22 = require("react/jsx-runtime");
 function ThemeProvider(_a) {
   var _b = _a, {
     children
   } = _b, props = __objRest(_b, [
     "children"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(import_next_themes.ThemeProvider, __spreadProps(__spreadValues({}, props), { children }));
+  return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_next_themes.ThemeProvider, __spreadProps(__spreadValues({}, props), { children }));
 }
 
+// src/components/richtext/ui/link-insert.tsx
+var React9 = __toESM(require("react"), 1);
+var import_lucide_react11 = require("lucide-react");
+var import_jsx_runtime23 = require("react/jsx-runtime");
+var AnchorLink = (_a) => {
+  var _b = _a, {
+    size,
+    ctx
+  } = _b, props = __objRest(_b, [
+    "size",
+    "ctx"
+  ]);
+  const [_open, _setOpen] = React9.useState(false);
+  const [url, setUrl] = React9.useState("");
+  const [newTab, setNewTab] = React9.useState(true);
+  const [error, setError] = React9.useState("");
+  const [hasSelection, setHasSelection] = React9.useState(false);
+  const { execute } = useEditorChain();
+  const { core } = useEditor();
+  React9.useEffect(() => {
+    const interval = setInterval(() => {
+      var _a2;
+      const sel = (_a2 = core == null ? void 0 : core.win) == null ? void 0 : _a2.getSelection();
+      if (!sel) return setHasSelection(false);
+      setHasSelection(
+        Boolean(sel.rangeCount && !sel.isCollapsed && sel.toString().trim())
+      );
+    }, 200);
+    return () => clearInterval(interval);
+  }, [core]);
+  React9.useEffect(() => {
+    var _a2, _b2;
+    if (ctx.link && ((_a2 = core == null ? void 0 : core.win) == null ? void 0 : _a2.getSelection)) {
+      const sel = core.win.getSelection();
+      const node = sel == null ? void 0 : sel.anchorNode;
+      const linkEl = (_b2 = node == null ? void 0 : node.parentElement) == null ? void 0 : _b2.closest("a");
+      if (linkEl) setUrl(linkEl.getAttribute("href") || "");
+    } else if (!ctx.link && !_open) {
+      setUrl("");
+    }
+  }, [ctx.link, _open, core]);
+  const isValidUrl = (str) => {
+    if (!str) return false;
+    try {
+      const u = new URL(str.startsWith("http") ? str : `https://${str}`);
+      return !!u.href;
+    } catch (e) {
+      return false;
+    }
+  };
+  const handleInsert = () => {
+    var _a2, _b2, _c, _d;
+    if (!isValidUrl(url)) {
+      setError("Please enter a valid URL");
+      return;
+    }
+    const formattedUrl = url.startsWith("http") ? url : `https://${url}`;
+    execute("link", formattedUrl);
+    const sel = (_a2 = core == null ? void 0 : core.win) == null ? void 0 : _a2.getSelection();
+    const anchor = (_c = (_b2 = sel == null ? void 0 : sel.anchorNode) == null ? void 0 : _b2.parentElement) == null ? void 0 : _c.closest("a");
+    if (anchor && newTab) {
+      anchor.setAttribute("target", "_blank");
+      anchor.setAttribute("rel", "noopener noreferrer");
+    }
+    (_d = core == null ? void 0 : core.win) == null ? void 0 : _d.focus();
+    setError("");
+    _setOpen(false);
+  };
+  const handleUnlink = () => {
+    var _a2;
+    execute("unlink");
+    (_a2 = core == null ? void 0 : core.win) == null ? void 0 : _a2.focus();
+    setUrl("");
+    _setOpen(false);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(DropdownMenu, { open: _open, onOpenChange: _setOpen, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      ToolbarButton,
+      __spreadProps(__spreadValues({
+        tooltip: "Insert or Edit Link",
+        toolButtonSize: size,
+        "data-active": ctx.link,
+        disabled: !hasSelection && !ctx.link
+      }, props), {
+        children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react11.Link, { className: "h-4 w-4" })
+      })
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+      DropdownMenuContent,
+      {
+        align: "end",
+        className: "w-80 rounded-xl p-4 border border-border/50 bg-background/95 backdrop-blur-md shadow-lg space-y-4",
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-center justify-between", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("h3", { className: "text-sm font-semibold text-foreground", children: ctx.link ? "Edit Link" : "Insert Link" }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+              Button,
+              {
+                variant: "ghost",
+                size: "icon",
+                className: "h-6 w-6 cursor-pointer rounded-full text-muted-foreground hover:text-foreground",
+                onClick: () => _setOpen(false),
+                children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react11.X, {})
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Separator, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(DropdownMenuGroup, { className: "space-y-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Label2, { htmlFor: "url", className: "text-sm text-muted-foreground", children: "URL" }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                Input,
+                {
+                  id: "url",
+                  placeholder: "https://example.com",
+                  value: url,
+                  onChange: (e) => setUrl(e.target.value),
+                  className: "rounded focus-visible:ring-2 focus-visible:ring-primary/40",
+                  autoFocus: true
+                }
+              ),
+              error && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("p", { className: "text-xs text-red-500 font-medium pt-1", children: error })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-center justify-between pt-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                Label2,
+                {
+                  htmlFor: "new-tab",
+                  className: "text-sm text-muted-foreground select-none",
+                  children: "Open in new tab"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Switch, { id: "new-tab", checked: newTab, onCheckedChange: setNewTab })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Separator, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex justify-between pt-2", children: [
+            ctx.link && /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+              Button,
+              {
+                variant: "ghost",
+                size: "sm",
+                className: "text-muted-foreground hover:text-red-500 gap-1",
+                onClick: handleUnlink,
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react11.Unlink, { className: "h-4 w-4" }),
+                  "Remove"
+                ]
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex gap-2 ml-auto", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                Button,
+                {
+                  variant: "ghost",
+                  size: "sm",
+                  onClick: () => _setOpen(false),
+                  className: "text-muted-foreground hover:text-foreground",
+                  children: "Cancel"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                Button,
+                {
+                  size: "sm",
+                  disabled: !url.trim(),
+                  onClick: handleInsert,
+                  className: "bg-primary text-primary-foreground hover:bg-primary/90",
+                  children: ctx.link ? "Update" : "Insert"
+                }
+              )
+            ] })
+          ] })
+        ]
+      }
+    )
+  ] });
+};
+
+// src/components/richtext/ui/image-modal.tsx
+var React10 = __toESM(require("react"), 1);
+var import_lucide_react12 = require("lucide-react");
+var import_jsx_runtime24 = require("react/jsx-runtime");
+var ImagePicker = ({
+  onChange,
+  selected,
+  maxSize = 5,
+  multiple = true
+}) => {
+  const [open, setOpen] = React10.useState(false);
+  const [isUploading, setIsUploading] = React10.useState(false);
+  const [images, setImages] = React10.useState([]);
+  const [loadingImages, setLoadingImages] = React10.useState(true);
+  const [uploadProgress, setUploadProgress] = React10.useState(0);
+  const [searchQuery, setSearchQuery] = React10.useState("");
+  const [viewMode, setViewMode] = React10.useState("grid");
+  const [dragActive, setDragActive] = React10.useState(false);
+  const [selectedImages, setSelectedImage] = React10.useState(
+    selected ? [selected] : []
+  );
+  const filteredImages = images.filter(
+    (img) => img.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  React10.useEffect(() => {
+    setLoadingImages(true);
+    setTimeout(() => {
+      setImages([
+        "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?w=400&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1492633423870-43d1cd2775eb?w=400&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&h=400&fit=crop"
+      ]);
+      setLoadingImages(false);
+    }, 1e3);
+  }, []);
+  const handleUpload = (e) => {
+    var _a;
+    const file = (_a = e.target.files) == null ? void 0 : _a[0];
+    if (!file) return;
+    if (file.size > maxSize * 1024 * 1024)
+      return alert(`Max size is ${maxSize}MB`);
+    if (!file.type.startsWith("image/"))
+      return alert("Please upload an image file");
+    setIsUploading(true);
+    setUploadProgress(0);
+    const progress = setInterval(() => {
+      setUploadProgress((prev) => {
+        if (prev >= 95) {
+          clearInterval(progress);
+          return 95;
+        }
+        return prev + 5;
+      });
+    }, 100);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setTimeout(() => {
+        const result = reader.result;
+        onChange == null ? void 0 : onChange(result);
+        setIsUploading(false);
+        setUploadProgress(100);
+        clearInterval(progress);
+      }, 1800);
+    };
+    reader.readAsDataURL(file);
+  };
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
+    if (e.type === "dragleave") setDragActive(false);
+  };
+  const handleSelectImage = (url) => {
+    if (multiple) {
+      setSelectedImage(
+        (prev) => prev.includes(url) ? prev.filter((item) => item !== url) : [...prev, url]
+      );
+    } else {
+      setSelectedImage([url]);
+    }
+  };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    const files = e.dataTransfer.files;
+    if (files == null ? void 0 : files[0]) {
+      const event = {
+        target: { files }
+      };
+      handleUpload(event);
+    }
+  };
+  const isSelected = (src) => {
+    return selectedImages.find((i) => i === src);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "flex items-center gap-3", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Dialog, { open, onOpenChange: setOpen, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(DialogTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+      ToolbarButton,
+      {
+        tooltip: "Add Media",
+        toolButtonSize: "xs",
+        "data-active": open,
+        children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.ImagePlus, { className: "h-4 w-4" })
+      }
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(DialogContent, { className: "sm:max-w-[700px] max-h-[80vh] p-0 overflow-hidden rounded-md shadow-2xl flex flex-col", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(DialogHeader, { className: "p-4 border-b border-border/50 sticky top-0 bg-background z-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(DialogTitle, { className: "text-lg font-semibold", children: "Choose or Upload Image" }),
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex items-center gap-2 justify-between mt-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "relative w-full", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Search, { className: "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" }),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              "input",
+              {
+                type: "text",
+                placeholder: "Search images...",
+                value: searchQuery,
+                onChange: (e) => setSearchQuery(e.target.value),
+                className: "w-full pl-10 pr-4 py-1.5 border border-border rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex border border-border rounded-md p-1 ml-3 shrink-0", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              Button,
+              {
+                variant: "ghost",
+                size: "sm",
+                onClick: () => setViewMode("grid"),
+                "data-active": viewMode === "grid",
+                className: cn(
+                  "rounded-md transition-colors border-0 data-[active=true]:bg-accent"
+                ),
+                children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Grid3X3, { className: "h-4 w-4" })
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              Button,
+              {
+                variant: "ghost",
+                size: "sm",
+                onClick: () => setViewMode("list"),
+                "data-active": viewMode === "list",
+                className: cn(
+                  "p-1.5 rounded-md transition-colors border-0 data-[active=true]:bg-accent"
+                ),
+                children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.List, { className: "h-4 w-4" })
+              }
+            )
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex-1 overflow-y-auto p-4 space-y-3 bg-background", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+          "div",
+          {
+            className: cn(
+              "relative border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center transition-all duration-300",
+              dragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/60 hover:bg-primary/5",
+              isUploading && "bg-muted/50"
+            ),
+            onDragEnter: handleDrag,
+            onDragLeave: handleDrag,
+            onDragOver: handleDrag,
+            onDrop: handleDrop,
+            children: !isUploading ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(import_jsx_runtime24.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Upload, { className: "h-8 w-8 text-primary mb-2" }),
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("p", { className: "font-medium", children: "Drop your image or click to browse" }),
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("p", { className: "text-sm text-muted-foreground", children: [
+                "JPG, PNG, WEBP \u2014 Max ",
+                maxSize,
+                "MB"
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                "input",
+                {
+                  type: "file",
+                  accept: "image/*",
+                  onChange: handleUpload,
+                  className: "absolute inset-0 opacity-0 cursor-pointer"
+                }
+              )
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex flex-col items-center space-y-3", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Loader2, { className: "h-10 w-10 text-primary animate-spin" }),
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "w-48 bg-muted rounded-full h-2 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                "div",
+                {
+                  className: "bg-primary h-2 rounded-full transition-all",
+                  style: { width: `${uploadProgress}%` }
+                }
+              ) }),
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("p", { className: "text-sm text-muted-foreground", children: [
+                "Uploading... ",
+                uploadProgress,
+                "%"
+              ] })
+            ] })
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex flex-col", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("p", { className: "text-sm font-medium mb-3 text-muted-foreground", children: "Your Media Files" }),
+          loadingImages ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            "div",
+            {
+              className: cn(
+                "gap-4",
+                viewMode === "grid" ? "grid grid-cols-3" : "space-y-3"
+              ),
+              children: [...Array(6)].map(
+                (_, i) => viewMode === "grid" ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Skeleton, { className: "h-32 rounded-lg" }, i) : /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex gap-3 items-center", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Skeleton, { className: "h-16 w-16 rounded-lg" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Skeleton, { className: "h-4 flex-1" })
+                ] }, i)
+              )
+            }
+          ) : filteredImages.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex flex-col items-center py-12 text-center text-muted-foreground", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.ImagePlus, { className: "h-10 w-10 opacity-40 mb-3" }),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("p", { children: "No images found" })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            "div",
+            {
+              className: cn(
+                "gap-4",
+                viewMode === "grid" ? "grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5" : "flex flex-col space-y-3"
+              ),
+              children: filteredImages.map((src, i) => /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                "div",
+                {
+                  onClick: () => handleSelectImage(src),
+                  className: cn(
+                    "cursor-pointer relative rounded-md group transition-all duration-200 border overflow-hidden",
+                    isSelected(src) ? "border-blue-500 ring-2 ring-blue-500/30" : "border-border hover:border-blue-500/50 hover:shadow-sm",
+                    viewMode === "list" && "flex items-center gap-4 p-1"
+                  ),
+                  children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(
+                    "div",
+                    {
+                      className: cn(
+                        "p-0 relative",
+                        viewMode === "list" && "flex items-center gap-4"
+                      ),
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                          "div",
+                          {
+                            className: cn(
+                              "overflow-hidden bg-muted",
+                              viewMode === "grid" ? "aspect-square" : "w-16 h-16",
+                              "rounded-md"
+                            ),
+                            children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                              "img",
+                              {
+                                src,
+                                alt: `Media ${i}`,
+                                className: "object-cover w-full h-full group-hover:scale-105 ease-in-out duration-150 transform transition-transform"
+                              }
+                            )
+                          }
+                        ),
+                        isSelected(src) && /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "absolute top-2 right-2 bg-accent text-accent-foreground rounded-full p-1 shadow", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Check, { className: "h-3 w-3" }) }),
+                        !isSelected(src) && /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "absolute top-2 right-2 bg-accent text-accent-foreground rounded-full p-1 shadow opacity-0 group-hover:opacity-60 transition-transform transform ease-in-out duration-100", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Check, { className: "h-3 w-3" }) }),
+                        viewMode === "list" && /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex-1 min-w-0", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("p", { className: "text-sm font-medium truncate", children: [
+                            "Image ",
+                            i + 1
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("p", { className: "text-xs text-muted-foreground truncate", children: src.split("/").pop() })
+                        ] })
+                      ]
+                    }
+                  )
+                },
+                i
+              ))
+            }
+          )
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex justify-between items-center border-t border-border bg-muted/10 p-3 sticky bottom-0 z-10", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "text-sm text-muted-foreground", children: selectedImages.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("span", { className: "flex items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Check, { className: "h-4 w-4 text-green-600" }),
+          "Image selected",
+          " ",
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "text-blue-500 font-bold", children: selectedImages.length })
+        ] }) : "No image selected" }),
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            Button,
+            {
+              variant: "outline",
+              size: "sm",
+              onClick: () => setOpen(false),
+              children: "Cancel"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            Button,
+            {
+              size: "sm",
+              variant: "primary",
+              disabled: !selectedImages.length || isUploading,
+              onClick: () => setOpen(false),
+              className: "gap-2",
+              children: isUploading ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(import_jsx_runtime24.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Loader2, { className: "h-4 w-4 animate-spin" }),
+                " Uploading..."
+              ] }) : `Select`
+            }
+          )
+        ] })
+      ] })
+    ] })
+  ] }) });
+};
+
 // src/components/richtext/toolbar/ToolbarChain.tsx
-var import_jsx_runtime20 = require("react/jsx-runtime");
+var import_jsx_runtime25 = require("react/jsx-runtime");
 var ToolbarChain = ({ format }) => {
   const { iframeRef, ctx } = useEditor();
-  const [chain, setChain] = React9.useState(null);
-  React9.useEffect(() => {
-    const timer = setInterval(() => {
+  const [chain, setChain] = React11.useState(null);
+  const [mounted, setMounted] = React11.useState(false);
+  React11.useEffect(() => {
+    setMounted(true);
+    const initChain = () => {
       var _a;
       if (((_a = iframeRef.current) == null ? void 0 : _a.contentWindow) && !chain) {
         setChain(new EditorChain(iframeRef.current.contentWindow));
       }
-    }, 500);
-    return () => clearInterval(timer);
+    };
+    initChain();
+    const timer = setInterval(initChain, 300);
+    return () => {
+      clearInterval(timer);
+      setMounted(false);
+    };
   }, [iframeRef, chain]);
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+  if (!mounted) {
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarWrapper, { className: "flex flex-nowrap gap-2 border-b py-2 px-3 bg-background/80 backdrop-blur-xs", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex items-center gap-1 animate-pulse", children: [...Array(12)].map((_, i) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "h-8 w-8 bg-muted rounded-md" }, i)) }) });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
     ThemeProvider,
     {
       attribute: "class",
       defaultTheme: "system",
       enableSystem: true,
       disableTransitionOnChange: true,
-      children: /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)(ToolbarWrapper, { className: "flex flex-wrap gap-2 border-b py-1 px-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(HistorySection, { ctx, size: "xs" }),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(ToolbarButtonSeparator, { orientation: "vertical" }),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(TextFormatSection, { ctx, size: "xs", format }),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(StyleFormatSection, { ctx, size: "xs" }),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(ToolbarButtonSeparator, { orientation: "vertical" }),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(ListSelectorSection, { ctx, size: "xs" }),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(IndentOutdentSection, { size: "xs", ctx }),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(TextAlignerSection, { ctx, size: "xs" }),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
-          TablePicker,
-          {
-            variant: "outline",
-            size: "icon-xs",
-            onSelect: (rows, cols) => {
-              var _a, _b, _c;
-              const win = (_a = iframeRef.current) == null ? void 0 : _a.contentWindow;
-              const body = (_b = win == null ? void 0 : win.document) == null ? void 0 : _b.body;
-              body == null ? void 0 : body.focus();
-              (_c = chain == null ? void 0 : chain.insertTable(rows, cols)) == null ? void 0 : _c.run();
+      children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(ToolbarWrapper, { className: "flex flex-nowrap gap-0 border-b py-2 px-3 bg-background/95 backdrop-blur-xs supports-backdrop-blur:bg-background/60 sticky top-0 z-40", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(HistorySection, { ctx, size: "xs" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TextFormatSection, { ctx, size: "xs", format }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(StyleFormatSection, { ctx, size: "xs" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(ToolbarGroup, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ListSelectorSection, { ctx, size: "xs" }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(IndentOutdentSection, { size: "xs", ctx })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TextAlignerSection, { ctx, size: "xs" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(ToolbarGroup, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AnchorLink, { size: "xs", ctx }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ImagePicker, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+            TablePicker,
+            {
+              variant: "ghost",
+              size: "icon-xs",
+              onSelect: (rows, cols) => {
+                var _a, _b, _c;
+                const win = (_a = iframeRef.current) == null ? void 0 : _a.contentWindow;
+                const body = (_b = win == null ? void 0 : win.document) == null ? void 0 : _b.body;
+                body == null ? void 0 : body.focus();
+                (_c = chain == null ? void 0 : chain.insertTable(rows, cols)) == null ? void 0 : _c.run();
+              }
             }
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
-          ToolbarButton,
-          {
-            toolButtonSize: "xs",
-            tooltip: "Add Divider",
-            onClick: () => {
-              var _a;
-              return (_a = chain == null ? void 0 : chain.insertHTML("<hr>")) == null ? void 0 : _a.run();
-            },
-            children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react9.Minus, {})
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
-          ToolbarButton,
-          {
-            toolButtonSize: "xs",
-            tooltip: "Clear",
-            onClick: () => {
-              var _a;
-              return (_a = chain == null ? void 0 : chain.clear()) == null ? void 0 : _a.run();
-            },
-            children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react9.Ban, {})
-          }
-        )
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+            ToolbarButton,
+            {
+              toolButtonSize: "xs",
+              tooltip: "Insert Divider",
+              onClick: () => {
+                var _a;
+                return (_a = chain == null ? void 0 : chain.insertHTML("<hr>")) == null ? void 0 : _a.run();
+              },
+              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react13.Minus, { className: "w-4 h-4" })
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(ToolbarGroup, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+            ToolbarButton,
+            {
+              toolButtonSize: "xs",
+              tooltip: "AI Enhance",
+              className: "bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0",
+              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react13.Sparkles, { className: "w-4 h-4" })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+            ToolbarButton,
+            {
+              toolButtonSize: "xs",
+              tooltip: "Clear Formatting",
+              onClick: () => {
+                var _a;
+                return (_a = chain == null ? void 0 : chain.clear()) == null ? void 0 : _a.run();
+              },
+              variant: "outline",
+              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react13.Ban, { className: "w-4 h-4" })
+            }
+          )
+        ] })
       ] })
     }
   );
 };
 
 // src/components/richtext/editor.tsx
-var import_jsx_runtime21 = require("react/jsx-runtime");
+var import_jsx_runtime26 = require("react/jsx-runtime");
 var RichtextEditor = ({
   initialContent,
   loader = "shine",
   toolbar,
   onChange,
   placeholder,
+  theme,
   style = {
     height: "350px",
-    theme: "light",
     border: {
       width: 1,
       radius: "md"
@@ -2317,8 +3616,8 @@ var RichtextEditor = ({
     shadow: "md"
   }
 }) => {
-  const [isMount, setIsMount] = React10.useState(false);
-  React10.useEffect(() => {
+  const [isMount, setIsMount] = React12.useState(false);
+  React12.useEffect(() => {
     const isInit = setInterval(() => {
       setIsMount(true);
     }, 300);
@@ -2332,23 +3631,24 @@ var RichtextEditor = ({
   if (!isMount) {
     switch (loader) {
       case "shine":
-        return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(EditorSkeleton, { animation: "shine" });
+        return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(EditorSkeleton, { animation: "shine" });
       case "skeleton":
-        return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(EditorSkeleton, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(EditorSkeleton, {});
       case "dots":
-        return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(DotsLoader, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(DotsLoader, {});
       default:
-        return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(SpinnerLoader, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(SpinnerLoader, {});
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
     EditorProvider,
     {
       placeholder,
       initialContent,
       onChange,
+      theme,
       style,
-      children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ToolbarChain, __spreadValues({}, toolbar))
+      children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarChain, __spreadValues({}, toolbar))
     }
   );
 };

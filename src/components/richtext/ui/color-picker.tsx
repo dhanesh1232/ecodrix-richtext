@@ -1,12 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import { SketchPicker, type ColorResult } from "react-color";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToolbarButton } from "../toolbar/toolbar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui";
 
 export const ColorHighlighter = React.forwardRef<
   HTMLButtonElement,
@@ -34,28 +38,35 @@ export const ColorHighlighter = React.forwardRef<
       setTempColor(clr.hex);
     };
 
+    React.useEffect(() => {
+      const close = () => setIsOpen(false);
+      window.addEventListener("editor-iframe-click", close);
+      return () => window.removeEventListener("editor-iframe-click", close);
+    }, []);
+
     const handleComplete = (clr: ColorResult) => {
       setTempColor(clr.hex);
       onChange?.(clr.hex);
     };
 
     return (
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
-        <PopoverTrigger
-          className={cn(
-            "px-0.5 p-0 flex items-center data-[state=open]:bg-accent",
-            className
-          )}
-          ref={ref}
-          disabled={disabled}
-          asChild
-        >
-          <ToolbarButton toolButtonSize={size} tooltip="Color" {...props}>
+      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+        <DropdownMenuTrigger asChild>
+          <ToolbarButton
+            data-active={isOpen}
+            className={className}
+            ref={ref}
+            disabled={disabled}
+            toolButtonSize={size}
+            tooltip="Color"
+            onClick={() => setIsOpen(!isOpen)}
+            {...props}
+          >
             <IconComponent color="currentColor" />
           </ToolbarButton>
-        </PopoverTrigger>
+        </DropdownMenuTrigger>
 
-        <PopoverContent
+        <DropdownMenuContent
           className="p-2 w-[260px] bg-background shadow-lg border border-border rounded"
           align="end"
         >
@@ -65,14 +76,16 @@ export const ColorHighlighter = React.forwardRef<
               onChangeIsBackground?.(value as "text" | "background")
             }
           >
-            <TabsList className="w-full rounded bg-accent">
+            <TabsList className="w-full rounded border border-border bg-background">
               <TabsTrigger
+                data-active={isBack === "text"}
                 value="text"
                 className="w-full cursor-pointer rounded"
               >
                 Text
               </TabsTrigger>
               <TabsTrigger
+                data-active={isBack === "background"}
                 value="background"
                 className="w-full cursor-pointer rounded"
               >
@@ -94,8 +107,8 @@ export const ColorHighlighter = React.forwardRef<
               />
             </TabsContent>
           </Tabs>
-        </PopoverContent>
-      </Popover>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   }
 );

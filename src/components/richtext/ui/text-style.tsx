@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { ToolbarButton, ToolbarGroup } from "../toolbar/toolbar";
+import { ToolbarButton } from "../toolbar/toolbar";
 import { useEditorChain } from "@/hooks/chain-execute";
 import { Bold, Italic, Palette, Underline } from "lucide-react";
 import { ColorHighlighter } from "@/components/richtext/ui/color-picker";
@@ -45,7 +45,7 @@ export const StyleFormatSection: React.FC<StyleFormatSectionProps> = ({
     execute(cmd, color);
   };
   return (
-    <ToolbarGroup>
+    <>
       {/* Actionable text-style buttons */}
       {styleButtons.map((btn) => (
         <ToolbarButton
@@ -70,6 +70,6 @@ export const StyleFormatSection: React.FC<StyleFormatSectionProps> = ({
           }
         />
       )}
-    </ToolbarGroup>
+    </>
   );
 };

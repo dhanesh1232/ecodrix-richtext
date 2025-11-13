@@ -55,6 +55,7 @@ export interface EditorProviderProps {
   children?: React.ReactNode;
   onChange?: (editor: EditorCore) => void;
   placeholder?: string;
+  theme?: "light" | "dark" | Record<string, string>;
   style?: DesignProps;
 }
 
@@ -64,6 +65,7 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
   onChange,
   placeholder,
   style,
+  theme,
 }) => {
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
 
@@ -99,8 +101,11 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
     });
 
     editor.on("ready", () => {
-      editor.enableAutoTheme();
-      //editor.setTheme(style?.theme || "light");
+      if (theme) {
+        editor.setTheme(theme);
+      } else {
+        editor.enableAutoTheme();
+      }
     });
 
     // 🧠 Undo/Redo state updates
@@ -113,6 +118,50 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
     });
     return () => editor.destroy();
   }, [iframeRef, onChange, initialContent]);
+
+  React.useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    const handleMouseEnter = () => {
+      const evt = new CustomEvent("editor-iframe-enter");
+      window.dispatchEvent(evt);
+    };
+
+    iframe.addEventListener("mouseenter", handleMouseEnter);
+
+    return () => {
+      iframe.removeEventListener("mouseenter", handleMouseEnter);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    const register = () => {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+
+      doc.addEventListener("mousedown", () => {
+        window.dispatchEvent(new Event("editor-iframe-click"));
+      });
+
+      doc.addEventListener("touchstart", () => {
+        window.dispatchEvent(new Event("editor-iframe-click"));
+      });
+    };
+
+    // Wait until iframe DOM is ready
+    const interval = setInterval(() => {
+      if (iframe.contentDocument?.body) {
+        register();
+        clearInterval(interval);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, []);
 
   React.useEffect(() => {
     const iframe = iframeRef.current;

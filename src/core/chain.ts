@@ -69,6 +69,7 @@ export class EditorChain {
   orderedList() {
     return this.exec("insertOrderedList");
   }
+
   indent() {
     this.target?.postMessage({ type: "CUSTOM_INDENT" }, "*");
     return this;

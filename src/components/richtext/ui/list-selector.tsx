@@ -1,16 +1,16 @@
 "use client";
 import { useEditorChain } from "@/hooks/chain-execute";
 import * as React from "react";
-import { ToolbarButton, ToolbarGroup } from "../toolbar/toolbar";
+import { ToolbarButton } from "../toolbar/toolbar";
 import { List, ListOrdered } from "lucide-react";
 
-export const ListSelectorSection: React.FC<ListSelectorSectionProps> = ({
+export const ListSelectorSection: React.FC<ToolbarButtonDefaultProps> = ({
   ctx,
   size = "sm",
 }) => {
   const { execute } = useEditorChain();
   return (
-    <ToolbarGroup>
+    <>
       <ToolbarButton
         onClick={() => execute("bulletList")}
         active={ctx.unorderedList as boolean}
@@ -27,6 +27,6 @@ export const ListSelectorSection: React.FC<ListSelectorSectionProps> = ({
       >
         <ListOrdered />
       </ToolbarButton>
-    </ToolbarGroup>
+    </>
   );
 };

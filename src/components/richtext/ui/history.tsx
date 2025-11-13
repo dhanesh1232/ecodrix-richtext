@@ -1,15 +1,15 @@
 import { useEditorChain } from "@/hooks/chain-execute";
-import { ToolbarButton, ToolbarGroup } from "../toolbar/toolbar";
+import { ToolbarButton } from "../toolbar/toolbar";
 import { Redo2, Undo2 } from "lucide-react";
 
-export const HistorySection: React.FC<ToolbarHistoryProps> = ({
+export const HistorySection: React.FC<ToolbarButtonDefaultProps> = ({
   ctx,
   size = "sm",
 }) => {
   const { execute } = useEditorChain();
 
   return (
-    <ToolbarGroup>
+    <>
       <ToolbarButton
         tooltip="Undo"
         disabled={!ctx.canUndo}
@@ -28,6 +28,6 @@ export const HistorySection: React.FC<ToolbarHistoryProps> = ({
       >
         <Redo2 />
       </ToolbarButton>
-    </ToolbarGroup>
+    </>
   );
 };

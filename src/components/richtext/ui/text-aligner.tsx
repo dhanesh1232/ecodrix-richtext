@@ -10,7 +10,7 @@ import { TextAlignStart, TextAlignCenter, TextAlignEnd } from "lucide-react";
 
 import { useEditorChain } from "@/hooks/chain-execute";
 
-export const TextAlignerSection: React.FC<TextAlignerSectionProps> = ({
+export const TextAlignerSection: React.FC<ToolbarButtonDefaultProps> = ({
   size = "sm",
   ctx,
   ...props

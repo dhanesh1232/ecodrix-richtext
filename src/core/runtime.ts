@@ -1,8 +1,256 @@
+// src/core/runtime.ts
 export function editorRuntimeInit() {
   let lastRange: Range | null = null;
   const undoStack: { html: string; caret: any }[] = [];
   const redoStack: { html: string; caret: any }[] = [];
 
+  /* ===========================================================
+ TABLE RESIZE MODULE — FINAL VERSION
+=========================================================== */
+
+  type TableHandle =
+    | "col-left"
+    | "col-right"
+    | "row-top"
+    | "row-bottom"
+    | "corner-tl"
+    | "corner-tr"
+    | "corner-bl"
+    | "corner-br";
+
+  const RESIZE_SENSITIVITY = 0.35; // smooth small increments
+
+  function insertTable(rows = 2, cols = 2) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "editor-table-wrapper";
+    wrapper.style.position = "relative";
+    wrapper.style.width = "100%";
+
+    const table = document.createElement("table");
+    table.style.borderCollapse = "collapse";
+    table.style.width = "100%";
+    table.style.tableLayout = "fixed";
+    wrapper.appendChild(table);
+
+    for (let r = 0; r < rows; r++) {
+      const tr = document.createElement("tr");
+      for (let c = 0; c < cols; c++) {
+        const td = document.createElement("td");
+        td.style.border = "1px solid #ccc";
+        td.style.padding = "6px";
+        td.innerHTML = "<br>";
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+
+    document.execCommand(
+      "insertHTML",
+      false,
+      wrapper.outerHTML + "<p><br></p>"
+    );
+
+    setTimeout(() => {
+      const tbl = document.body.querySelector(
+        "table:last-of-type"
+      ) as HTMLTableElement | null;
+      if (tbl) {
+        equalizeColumns(tbl);
+        addTableResizeHandles(tbl);
+      }
+    }, 15);
+  }
+
+  function equalizeColumns(table: HTMLTableElement) {
+    const first = table.rows[0];
+    if (!first) return;
+
+    const count = first.cells.length;
+    const pct = 100 / count;
+
+    for (let r = 0; r < table.rows.length; r++) {
+      for (let c = 0; c < count; c++) {
+        table.rows[r].cells[c].style.width = pct + "%";
+      }
+    }
+  }
+
+  function addTableResizeHandles(table: HTMLTableElement) {
+    const wrapper = table.parentElement as HTMLElement;
+    wrapper.style.position = "relative";
+
+    wrapper.querySelectorAll(".table-resize-handle").forEach((n) => n.remove());
+
+    const rect = () => table.getBoundingClientRect();
+    const wrapRect = () => wrapper.getBoundingClientRect();
+
+    function makeHandle(handle: TableHandle) {
+      const el = document.createElement("div");
+      el.className = "table-resize-handle";
+      el.dataset.handle = handle;
+
+      el.addEventListener("mouseenter", () =>
+        wrapper.classList.add("table-active-border")
+      );
+      el.addEventListener("mouseleave", () =>
+        wrapper.classList.remove("table-active-border")
+      );
+
+      wrapper.appendChild(el);
+      el.style.position = "absolute";
+      return el;
+    }
+
+    const colLeft = makeHandle("col-left");
+    const colRight = makeHandle("col-right");
+    const rowTop = makeHandle("row-top");
+    const rowBottom = makeHandle("row-bottom");
+    const cornerTL = makeHandle("corner-tl");
+    const cornerTR = makeHandle("corner-tr");
+    const cornerBL = makeHandle("corner-bl");
+    const cornerBR = makeHandle("corner-br");
+
+    function position() {
+      const r = rect();
+      const w = wrapRect();
+      const cornerSize = 12;
+
+      colLeft.style.left = r.left - w.left - 2 + "px";
+      colLeft.style.top = "0px";
+      colLeft.style.width = "2px";
+      colLeft.style.height = table.offsetHeight + "px";
+      colLeft.style.cursor = "col-resize";
+
+      colRight.style.left = r.right - w.left - 2 + "px";
+      colRight.style.top = "0px";
+      colRight.style.width = "2px";
+      colRight.style.height = table.offsetHeight + "px";
+      colRight.style.cursor = "col-resize";
+
+      rowTop.style.top = r.top - w.top - 2 + "px";
+      rowTop.style.left = "0px";
+      rowTop.style.height = "2px";
+      rowTop.style.width = table.offsetWidth + "px";
+      rowTop.style.cursor = "row-resize";
+
+      rowBottom.style.top = r.bottom - w.top - 2 + "px";
+      rowBottom.style.left = "0px";
+      rowBottom.style.height = "2px";
+      rowBottom.style.width = table.offsetWidth + "px";
+      rowBottom.style.cursor = "row-resize";
+
+      cornerTL.style.left = r.left - w.left - cornerSize / 2 + "px";
+      cornerTL.style.top = r.top - w.top - cornerSize / 2 + "px";
+      cornerTL.style.width = cornerSize + "px";
+      cornerTL.style.height = cornerSize + "px";
+      cornerTL.style.cursor = "nwse-resize";
+
+      cornerTR.style.left = r.right - w.left - cornerSize / 2 + "px";
+      cornerTR.style.top = r.top - w.top - cornerSize / 2 + "px";
+      cornerTR.style.width = cornerSize + "px";
+      cornerTR.style.height = cornerSize + "px";
+      cornerTR.style.cursor = "nesw-resize";
+
+      cornerBL.style.left = r.left - w.left - cornerSize / 2 + "px";
+      cornerBL.style.top = r.bottom - w.top - cornerSize / 2 + "px";
+      cornerBL.style.width = cornerSize + "px";
+      cornerBL.style.height = cornerSize + "px";
+      cornerBL.style.cursor = "nesw-resize";
+
+      cornerBR.style.left = r.right - w.left - cornerSize / 2 + "px";
+      cornerBR.style.top = r.bottom - w.top - cornerSize / 2 + "px";
+      cornerBR.style.width = cornerSize + "px";
+      cornerBR.style.height = cornerSize + "px";
+      cornerBR.style.cursor = "nwse-resize";
+    }
+
+    position();
+    new ResizeObserver(position).observe(table);
+
+    /* ---------------- DRAG LOGIC ---------------- */
+
+    let active: TableHandle | null = null;
+    let startX = 0;
+    let startY = 0;
+    let startW = 0;
+    let startRowHeight = 0;
+
+    wrapper.addEventListener("mousedown", (e) => {
+      const target = (e.target as HTMLElement)?.closest(
+        ".table-resize-handle"
+      ) as HTMLElement | null;
+      if (!target) return;
+
+      active = target.dataset.handle as TableHandle;
+
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = table.offsetWidth;
+      startRowHeight = table.rows[0].cells[0].offsetHeight; // 🔥 FIXED: use row height
+
+      e.preventDefault();
+      document.addEventListener("mousemove", doDrag);
+      document.addEventListener("mouseup", stopDrag);
+    });
+
+    function doDrag(e: MouseEvent) {
+      if (!active) return;
+
+      const rawDx = e.clientX - startX;
+      const rawDy = e.clientY - startY;
+
+      const dx = rawDx * RESIZE_SENSITIVITY;
+      const dy = rawDy * RESIZE_SENSITIVITY;
+
+      // ---- Horizontal ----
+      if (active === "col-right") {
+        table.style.width = Math.max(80, startW + dx) + "px";
+      }
+      if (active === "col-left") {
+        table.style.width = Math.max(80, startW - dx) + "px";
+      }
+
+      // ---- Vertical ----
+      if (active === "row-bottom") {
+        const newH = Math.max(20, startRowHeight + dy);
+        resizeRows(newH);
+      }
+      if (active === "row-top") {
+        const newH = Math.max(20, startRowHeight - dy);
+        resizeRows(newH);
+      }
+
+      // ---- Corner ----
+      if (active.startsWith("corner")) {
+        const newW = Math.max(80, startW + dx);
+        const newH = Math.max(20, startRowHeight + dy);
+
+        table.style.width = newW + "px";
+        resizeRows(newH);
+      }
+
+      position();
+    }
+
+    function resizeRows(h: number) {
+      for (const row of table.rows) {
+        for (const cell of row.cells) {
+          cell.style.height = h + "px";
+        }
+      }
+    }
+
+    function stopDrag() {
+      active = null;
+      document.removeEventListener("mousemove", doDrag);
+      document.removeEventListener("mouseup", stopDrag);
+    }
+  }
+
+  /**
+   * ======================================
+   * @Default Functions
+   */
   function notifyReadySafely() {
     const check = setInterval(() => {
       if (document.body && document.body.isContentEditable) {
@@ -67,6 +315,25 @@ export function editorRuntimeInit() {
     } catch {
       /* ignore invalid positions */
     }
+  }
+
+  function closestElement(
+    node: Node | null,
+    selectors: string
+  ): HTMLElement | null {
+    if (!node) return null;
+
+    let el: HTMLElement | null =
+      node.nodeType === Node.ELEMENT_NODE
+        ? (node as HTMLElement)
+        : node.parentElement;
+
+    while (el) {
+      if (el.matches(selectors)) return el;
+      el = el.parentElement;
+    }
+
+    return null;
   }
 
   function send(type: string, payload: Record<string, unknown> = {}) {
@@ -155,6 +422,47 @@ export function editorRuntimeInit() {
 
   // 🔁 Selection tracking
   document.addEventListener("selectionchange", () => {
+    // Detect indentation
+    const sel = window.getSelection();
+    // Anchor Link Handle Block
+    let isLink = false;
+    try {
+      isLink = document.queryCommandState("createLink");
+    } catch {
+      isLink = false;
+    }
+
+    // manual fallback detection
+    if (sel && sel.anchorNode) {
+      const anchorElement =
+        sel.anchorNode.nodeType === Node.ELEMENT_NODE
+          ? (sel.anchorNode as HTMLElement)
+          : (sel.anchorNode.parentElement as HTMLElement | null);
+      if (anchorElement) {
+        const linkParent = anchorElement.closest("a");
+        if (linkParent) isLink = true;
+      }
+    }
+
+    function isInside(tagNames: string[]): boolean {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return false;
+
+      let node: Node | null = sel.anchorNode;
+      if (!node) return false;
+
+      if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+
+      while (node && node !== document.body) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = (node as HTMLElement).tagName.toUpperCase();
+          if (tagNames.includes(tag)) return true;
+        }
+        node = node.parentNode;
+      }
+      return false;
+    }
+
     const payload = {
       block: document.queryCommandValue("formatBlock") || "P",
       bold: document.queryCommandState("bold"),
@@ -166,13 +474,15 @@ export function editorRuntimeInit() {
       justifyLeft: document.queryCommandState("justifyLeft"),
       justifyCenter: document.queryCommandState("justifyCenter"),
       justifyRight: document.queryCommandState("justifyRight"),
-      link: document.queryCommandState("createLink"),
       foreColor: document.queryCommandValue("foreColor"),
       backColor: document.queryCommandValue("hiliteColor"),
     };
 
-    // Detect indentation
-    const sel = window.getSelection();
+    payload.bold = isInside(["B", "STRONG"]);
+    payload.italic = isInside(["I", "EM"]);
+    payload.underline = isInside(["U"]);
+    payload.strike = isInside(["S", "STRIKE"]);
+
     let isIndented = false;
 
     if (sel && sel.anchorNode) {
@@ -194,9 +504,8 @@ export function editorRuntimeInit() {
           /^\s|(&nbsp;)+/.test(block.innerHTML);
       }
     }
-
     (payload as EditorContextState).isIndented = isIndented;
-
+    (payload as EditorContextState).link = isLink;
     const blk = String(payload.block).toUpperCase();
     (payload as EditorContextState).isHeading1 = blk === "H1";
     (payload as EditorContextState).isHeading2 = blk === "H2";
@@ -271,6 +580,36 @@ export function editorRuntimeInit() {
     });
   }
 
+  function breakInlineFormatting() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+
+    const range = sel.getRangeAt(0);
+
+    // Only apply if selection is collapsed (typing)
+    if (!range.collapsed) return;
+
+    const container = range.startContainer;
+
+    // If inside bold/italic/underline — break out
+    const styledParent = closestElement(
+      container,
+      "b,strong,i,em,u,span[style]"
+    );
+
+    if (styledParent) {
+      const after = document.createTextNode("");
+      styledParent.parentNode?.insertBefore(after, styledParent.nextSibling);
+
+      const newRange = document.createRange();
+      newRange.setStart(after, 0);
+      newRange.collapse(true);
+
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    }
+  }
+
   // 🧠 Update html on edit
   document.body.addEventListener("input", () => {
     ensureParagraphExists();
@@ -295,6 +634,10 @@ export function editorRuntimeInit() {
     if (type === "EXEC") {
       restoreSelection();
       document.execCommand(cmd, false, value ?? null);
+
+      // ⛔ Break formatting continuity after selection
+      breakInlineFormatting();
+
       document.body.dispatchEvent(new Event("input"));
     }
 
@@ -328,24 +671,55 @@ export function editorRuntimeInit() {
 
     if (type === "INSERT_TABLE") {
       restoreSelection();
-      const { rows = 2, cols = 2 } = e.data;
-      let tableHtml = "<table style='border-collapse: collapse; width: 100%;'>";
-      for (let r = 0; r < rows; r++) {
-        tableHtml += "<tr>";
-        for (let c = 0; c < cols; c++) {
-          tableHtml +=
-            "<td style='border: 1px solid #ccc; padding: 6px;'><br></td>";
-        }
-        tableHtml += "</tr>";
-      }
-      tableHtml += "</table><p><br></p>";
-      document.execCommand("insertHTML", false, tableHtml);
+      insertTable(e.data.rows, e.data.cols);
       document.body.dispatchEvent(new Event("input"));
     }
   });
 
   // ⌨️ Keyboard shortcuts
   document.addEventListener("keydown", (ev: KeyboardEvent) => {
+    // --- Prevent bold/italic/underline from carrying after Enter ---
+    if (ev.key === "Enter") {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed) return; // don't run on multi-line selection
+
+      const container =
+        range.startContainer.nodeType === Node.TEXT_NODE
+          ? range.startContainer.parentElement
+          : range.startContainer;
+
+      const styledParent = closestElement(
+        container,
+        "b,strong,i,em,u,span[style]"
+      );
+      if (styledParent) {
+        ev.preventDefault(); // stop browser default carry-over
+
+        // Create a clean normal <p><br></p> block
+        const newP = document.createElement("p");
+        newP.innerHTML = "<br>";
+
+        // Insert AFTER current block
+        const currentBlock = styledParent.closest("p,div,li,blockquote,pre");
+        currentBlock?.parentNode?.insertBefore(newP, currentBlock.nextSibling);
+
+        // Move caret
+        const newRange = document.createRange();
+        newRange.setStart(newP, 0);
+        newRange.collapse(true);
+
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+
+        // ensure undo state + context updates
+        document.body.dispatchEvent(new Event("input"));
+        return;
+      }
+    }
+
     if (ev.key === "Tab") {
       ev.preventDefault();
       const sel = window.getSelection();

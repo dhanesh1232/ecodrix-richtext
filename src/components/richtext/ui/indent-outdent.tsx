@@ -1,14 +1,14 @@
 import React from "react";
-import { ToolbarButton, ToolbarGroup } from "../toolbar/toolbar";
+import { ToolbarButton } from "../toolbar/toolbar";
 import { useEditorChain } from "@/hooks/chain-execute";
 
-export const IndentOutdentSection: React.FC<IndentOutdentSectionProps> = ({
+export const IndentOutdentSection: React.FC<ToolbarButtonDefaultProps> = ({
   ctx,
   size,
 }) => {
   const { execute } = useEditorChain();
   return (
-    <ToolbarGroup>
+    <>
       <ToolbarButton
         toolButtonSize={size}
         tooltip="Indent"
@@ -25,7 +25,7 @@ export const IndentOutdentSection: React.FC<IndentOutdentSectionProps> = ({
       >
         <Outdent />
       </ToolbarButton>
-    </ToolbarGroup>
+    </>
   );
 };
 

@@ -9,6 +9,7 @@ interface RichtextEditorProps {
   initialContent?: string;
   onChange?: (value: EditorCore) => void;
   placeholder?: string;
+  theme?: "light" | "dark" | Record<string, string>;
 
   loader?: EditorLoader;
   toolbar?: ToolbarChainProps;
@@ -21,9 +22,9 @@ export const RichtextEditor: React.FC<RichtextEditorProps> = ({
   toolbar,
   onChange,
   placeholder,
+  theme,
   style = {
     height: "350px",
-    theme: "light",
     border: {
       width: 1,
       radius: "md",
@@ -63,6 +64,7 @@ export const RichtextEditor: React.FC<RichtextEditorProps> = ({
       placeholder={placeholder}
       initialContent={initialContent}
       onChange={onChange}
+      theme={theme}
       style={style}
     >
       <ToolbarChain {...toolbar} />

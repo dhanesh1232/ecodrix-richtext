@@ -65,6 +65,7 @@ export class EditorCore {
         --editor-code-bg: #f9fafb;
         --editor-blockquote-border: #3b82f6;
         --editor-hr: #d1d5db;
+        --tbl-highlight: #3b82f6;
       }
 
       [data-theme="dark"] {
@@ -96,6 +97,75 @@ export class EditorCore {
         padding: 0.75rem;
       }
       
+      
+      /* -----------------------------------------------------
+        PREMIUM EDITOR SCROLL EXPERIENCE
+        Inspired by Linear + macOS floating overlays
+      ------------------------------------------------------ */
+
+      /* Base variables (auto-adapt to light/dark) */
+      * {
+        --scroll-thumb: color-mix(in srgb, var(--editor-fg) 40%, transparent 60%);
+        --scroll-thumb-hover: color-mix(in srgb, var(--editor-fg) 55%, transparent 45%);
+        --scroll-track: color-mix(in srgb, var(--editor-bg) 85%, transparent 15%);
+      }
+
+      /* Firefox support */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+      }
+
+      /* WebKit scrollbars */
+      *::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+        background: transparent;
+      }
+
+      /* Floating, softened track */
+      *::-webkit-scrollbar-track {
+        background: transparent; /* invisible track */
+      }
+
+      /* Floating thumb */
+      *::-webkit-scrollbar-thumb {
+        background: var(--scroll-thumb);
+        border-radius: 999px;
+        opacity: 0;
+        transition: opacity 0.25s ease, background-color 0.25s ease;
+      }
+
+      /* Hover → thumb brightens */
+      *::-webkit-scrollbar-thumb:hover {
+        background: var(--scroll-thumb-hover);
+      }
+
+      /* Only show thumb while scrolling or hovering */
+      html:hover::-webkit-scrollbar-thumb,
+      body:hover::-webkit-scrollbar-thumb {
+        opacity: 1;
+      }
+
+      /* Smooth fade-in on scroll */
+      ::-webkit-scrollbar-thumb {
+        animation: fadeOutScrollbar 1.5s forwards;
+      }
+
+      @keyframes fadeOutScrollbar {
+        0% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+
+      /* Fix corner on both axes */
+      *::-webkit-scrollbar-corner {
+        background: transparent;
+      }
+
       *, *::before, *::after {
         box-sizing: inherit;
       }
@@ -166,6 +236,50 @@ export class EditorCore {
 
       html, body {
         transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
+      }
+      
+      /* Highlight LEFT edge */
+      .editor-table-wrapper.handle-left-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+        clip-path: inset(0 calc(100% - 2px) 0 0);
+      }
+
+      /* Highlight RIGHT edge */
+      .editor-table-wrapper.handle-right-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+        clip-path: inset(0 0 0 calc(100% - 2px));
+      }
+
+      /* Highlight TOP edge */
+      .editor-table-wrapper.handle-top-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+        clip-path: inset(calc(100% - 2px) 0 0 0);
+      }
+
+      /* Highlight BOTTOM edge */
+      .editor-table-wrapper.handle-bottom-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+        clip-path: inset(0 0 calc(100% - 2px) 0);
+      }
+
+      /* Highlight corners (full frame) */
+      .editor-table-wrapper.handle-corner-hover table {
+        outline: 2px solid var(--tbl-highlight);
+        outline-offset: -2px;
+      }
+
+      /* Highlight full table border when a handle is hovered */
+      .editor-table-wrapper.table-active-border table {
+        outline: 2px solid #3b82f6;
+        outline-offset: -2px;
+      }
+
+      .editor-table-wrapper table {
+        transition: outline-color 0.15s ease;
       }
     </style>
   </head>

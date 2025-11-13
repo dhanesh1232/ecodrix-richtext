@@ -164,7 +164,7 @@ export const TextFormatSection: React.FC<TextFormatSectionProps> = ({
             <ChevronDown className="w-4 h-4 opacity-70" strokeWidth={2} />
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Select Text format</TooltipContent>
+        <TooltipContent side="top">Select Text format</TooltipContent>
       </Tooltip>
 
       <DropdownMenuContent align="center" className="min-w-10 space-y-0.5">

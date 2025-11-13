@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Table } from "lucide-react";
 import * as React from "react";
 import { ToolbarButton } from "../toolbar/toolbar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui";
 
 interface TablePickerProps
   extends Omit<React.ComponentProps<typeof Button>, "onSelect"> {
@@ -25,8 +25,8 @@ export const TablePicker = React.forwardRef<
   const maxCols = 10;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
         <ToolbarButton
           ref={ref}
           toolButtonSize="xs"
@@ -36,8 +36,8 @@ export const TablePicker = React.forwardRef<
         >
           <Table />
         </ToolbarButton>
-      </PopoverTrigger>
-      <PopoverContent>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
         {Array.from({ length: maxRows }).map((_, r) => (
           <div key={r} className="flex space-y-0.5 space-x-0.5 mx-auto w-full">
             {Array.from({ length: maxCols }).map((_, c) => {
@@ -62,8 +62,8 @@ export const TablePicker = React.forwardRef<
         <div className="text-xs text-muted-foreground mt-2">
           {table.rows + 1} × {table.cols + 1}
         </div>
-      </PopoverContent>
-    </Popover>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 });
 

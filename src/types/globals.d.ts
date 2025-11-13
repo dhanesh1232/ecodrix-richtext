@@ -1,89 +1,8 @@
-import type { Icons } from "@/components/icons";
-import { EditorCore } from "@/core/engine";
-import { TooltipContentProps } from "@radix-ui/react-tooltip";
 import { LucideIcon } from "lucide-react";
-import React, { ReactNode } from "react";
+import type * as React from "react";
 
-// declare module "@monaco-editor/react";
 declare global {
   type EditorLoader = "skeleton" | "dots" | "shine" | "spinner";
-
-  type EditorMode = "design" | "html" | "preview";
-  interface UndoRedoState {
-    canUndo: boolean;
-    canRedo: boolean;
-  }
-
-  interface EditorContainerBlockProps {
-    initialContent?: string;
-    loader?: EditorLoader;
-    toolbar?: ToolbarChainProps;
-    onChange?: (html: string) => void;
-  }
-
-  interface ButtonWIthTooltipProps
-    extends Omit<TooltipContentProps, "children"> {
-    label?: ReactNode;
-    icon?: ButtonIcon;
-    withIcon?: boolean;
-    isArrow?: boolean;
-  }
-
-  interface AllToolsProps {
-    historyTabs?: ButtonProps[];
-    textFormatTabs?: TextFormatTagProps[];
-    textStyleTabs?: ButtonProps[];
-    textAlignTabs?: ButtonProps[];
-    mediaAndLinksTabs?: ButtonProps[];
-    textAdjustTabs?: ButtonProps[];
-    extraTabs?: ButtonProps[];
-  }
-
-  interface ButtonProps {
-    label?: string;
-    cmd?: string;
-    icon?: ButtonIcon;
-  }
-
-  interface TextFormatTagProps {
-    label?: string;
-    cmd?: string;
-    style?: string;
-    icon?: ButtonIcon;
-  }
-
-  interface HistoryFormatProps {
-    buttons?: ButtonProps[];
-    onCommand?: (cmd: string) => void;
-  }
-
-  interface TextFormatProps {
-    buttons?: TextFormatTagProps[];
-    formatting?: formatting[];
-    onFormat?: (format: string) => void;
-  }
-
-  type formatting =
-    | "h1"
-    | "h2"
-    | "h3"
-    | "h4"
-    | "h5"
-    | "h6"
-    | "p"
-    | "blockquote";
-
-  type ButtonIcon = keyof typeof Icons;
-
-  interface TextStyleFormatProps {
-    buttons?: ButtonProps[];
-    onCommand?: (cmd: string) => void;
-  }
-
-  interface TextAlignProps {
-    buttons?: ButtonProps[];
-    onCommand?: (cmd: string) => void;
-  }
 
   interface ColorHighlighterProps {
     color?: string;
@@ -99,39 +18,6 @@ declare global {
     size?: ToolbarButtonSize;
   }
 
-  interface MediaLinkProps {
-    onCommand?: (cmd: string) => void;
-    buttons?: ButtonProps[];
-    mediaUrl?: boolean;
-  }
-  interface MediaHanderProps {
-    onCommand?: (cmd: string, value?: string) => void;
-    mediaUrl?: boolean;
-  }
-
-  type AllToolTypes = keyof AllToolsProps;
-
-  interface TextAdjustProps {
-    buttons?: ButtonProps[];
-    onCommand?: (cmd: string) => void;
-  }
-
-  interface ResponsiveStyleFormatProps {
-    buttons: ButtonProps[];
-    onCommand?: (cmd: string) => void;
-  }
-
-  interface MoreToolsProps {
-    show?: boolean;
-    onShow?: () => void;
-    tools?: AllToolsProps;
-    showTools?: AllToolTypes[];
-  }
-
-  // New Methods of Editor
-  /**
-   * New Method prepared with class and better handling
-   */
   type EditorContextState = {
     block: string;
     bold: boolean;
@@ -160,15 +46,12 @@ declare global {
     isIndented?: boolean;
   };
 
-  interface ToolbarHistoryProps {
-    ctx: EditorContextState;
-    size?: ToolbarButtonSize;
+  interface TextFormatSectionProps extends ToolbarButtonDefaultProps {
+    format?: Format;
   }
 
-  interface TextFormatSectionProps {
-    ctx: EditorContextState;
-    size?: ToolbarButtonSize;
-    format?: Format;
+  interface StyleFormatSectionProps extends ToolbarButtonDefaultProps {
+    highlighter?: boolean;
   }
 
   type Format = {
@@ -178,26 +61,6 @@ declare global {
     paragraph?: boolean;
   };
 
-  interface StyleFormatSectionProps {
-    ctx: EditorContextState;
-    size?: ToolbarButtonSize;
-    highlighter?: boolean;
-  }
-
-  interface ListSelectorSectionProps {
-    ctx: EditorContextState;
-    size?: ToolbarButtonSize;
-  }
-
-  interface IndentOutdentSectionProps {
-    ctx?: EditorContextState;
-    size?: ToolbarButtonSize;
-  }
-
-  interface TextAlignerSectionProps {
-    ctx?: EditorContextState;
-    size?: ToolbarButtonSize;
-  }
   // Toolbar button
   interface ToolbarButtonProps
     extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -228,10 +91,14 @@ declare global {
     mediaUrl?: boolean;
   }
 
+  interface ToolbarButtonDefaultProps {
+    ctx: EditorContextState;
+    size?: ToolbarButtonSize;
+  }
+
   /// Style
   interface DesignProps {
     height?: string | number;
-    theme?: "light" | "dark" | Record<string, string>;
     border?: {
       width?: BorderWith;
       radius?: BorderRadius;
