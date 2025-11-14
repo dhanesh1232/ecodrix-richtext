@@ -53,7 +53,7 @@ export const ColorHighlighter = React.forwardRef<
       <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
         <DropdownMenuTrigger asChild>
           <ToolbarButton
-            data-active={isOpen}
+            active={isOpen}
             className={className}
             ref={ref}
             disabled={disabled}

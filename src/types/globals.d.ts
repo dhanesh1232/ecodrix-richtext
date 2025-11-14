@@ -88,7 +88,11 @@ declare global {
 
   interface ToolbarChainProps {
     format?: Format;
-    mediaUrl?: boolean;
+    isUrl?: boolean;
+    image?: {
+      modal?: boolean;
+      isMultiple?: boolean;
+    };
   }
 
   interface ToolbarButtonDefaultProps {

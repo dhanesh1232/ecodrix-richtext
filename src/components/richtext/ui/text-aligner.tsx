@@ -50,7 +50,7 @@ export const TextAlignerSection: React.FC<ToolbarButtonDefaultProps> = ({
         <ToolbarButton
           {...props}
           tooltip="Text Alignment"
-          data-active={_open}
+          active={_open}
           toolButtonSize={size}
         >
           {activeAlign}

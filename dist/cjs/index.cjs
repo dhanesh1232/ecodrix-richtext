@@ -65,7 +65,7 @@ module.exports = __toCommonJS(index_exports);
 var import_globals = require("./globals.css");
 
 // src/components/richtext/editor.tsx
-var React12 = __toESM(require("react"), 1);
+var React15 = __toESM(require("react"), 1);
 
 // src/context/editor.tsx
 var React = __toESM(require("react"), 1);
@@ -676,6 +676,17 @@ function editorRuntimeInit() {
       }
     }
   });
+  document.body.addEventListener(
+    "blur",
+    () => {
+      try {
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      } catch (e) {
+      }
+    },
+    true
+  );
   window.addEventListener("error", (err) => {
     parent.postMessage({ type: "IFRAME_ERROR", message: err.message }, "*");
   });
@@ -753,6 +764,10 @@ var EditorCore = class {
         --editor-blockquote-border: #3b82f6;
         --editor-hr: #d1d5db;
         --tbl-highlight: #3b82f6;
+
+        --scroll-thumb: color-mix(in srgb, var(--editor-fg) 40%, transparent 60%);
+        --scroll-thumb-hover: color-mix(in srgb, var(--editor-fg) 55%, transparent 45%);
+        --scroll-track: color-mix(in srgb, var(--editor-bg) 85%, transparent 15%);
       }
 
       [data-theme="dark"] {
@@ -764,100 +779,70 @@ var EditorCore = class {
         --editor-code-bg: #111827;
         --editor-blockquote-border: #60a5fa;
         --editor-hr: #374151;
+
+        --scroll-thumb: color-mix(in srgb, #ffffff 40%, transparent 60%);
+        --scroll-thumb-hover: color-mix(in srgb, #ffffff 55%, transparent 45%);
       }
 
       html, body {
         height: 100%;
+        width: 100%;
         margin: 0;
         padding: 0;
         box-sizing: border-box;
-        overflow-y: auto;
-        cursor: text;
         background: var(--editor-bg);
         color: var(--editor-fg);
         font-family: system-ui, -apple-system, sans-serif;
         line-height: 1.6;
-        transition: background-color 0.25s ease, color 0.25s ease;
+        cursor: text;
+        transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
+
+        /* --- Default: NO scroll, no scrollbar --- */
+        overflow-y: hidden;
+        scrollbar-width: none; /* Firefox */
       }
 
-      body {
-        padding: 0.75rem;
-      }
-      
-      
-      /* -----------------------------------------------------
-        PREMIUM EDITOR SCROLL EXPERIENCE
-        Inspired by Linear + macOS floating overlays
-      ------------------------------------------------------ */
-
-      /* Base variables (auto-adapt to light/dark) */
-      * {
-        --scroll-thumb: color-mix(in srgb, var(--editor-fg) 40%, transparent 60%);
-        --scroll-thumb-hover: color-mix(in srgb, var(--editor-fg) 55%, transparent 45%);
-        --scroll-track: color-mix(in srgb, var(--editor-bg) 85%, transparent 15%);
+      /* Hide scrollbar (WebKit) by default */
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar {
+        width: 0px;
+        height: 0px;
       }
 
-      /* Firefox support */
-      * {
+      /* ---------------------------------------------------------
+         ON FOCUS \u2014 enable scroll + premium scrollbar
+      --------------------------------------------------------- */
+      html:focus-within,
+      body:focus-within {
+        overflow-y: auto !important;
         scrollbar-width: thin;
-        scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+        scrollbar-color: var(--scroll-thumb) transparent;
       }
 
-      /* WebKit scrollbars */
-      *::-webkit-scrollbar {
+      html:focus-within::-webkit-scrollbar,
+      body:focus-within::-webkit-scrollbar {
         width: 8px;
         height: 8px;
-        background: transparent;
       }
 
-      /* Floating, softened track */
-      *::-webkit-scrollbar-track {
-        background: transparent; /* invisible track */
-      }
-
-      /* Floating thumb */
-      *::-webkit-scrollbar-thumb {
+      html:focus-within::-webkit-scrollbar-thumb,
+      body:focus-within::-webkit-scrollbar-thumb {
         background: var(--scroll-thumb);
         border-radius: 999px;
-        opacity: 0;
-        transition: opacity 0.25s ease, background-color 0.25s ease;
+        opacity: 0.8;
+        transition: opacity 0.25s ease;
       }
 
-      /* Hover \u2192 thumb brightens */
-      *::-webkit-scrollbar-thumb:hover {
+      html:focus-within::-webkit-scrollbar-thumb:hover,
+      body:focus-within::-webkit-scrollbar-thumb:hover {
         background: var(--scroll-thumb-hover);
       }
 
-      /* Only show thumb while scrolling or hovering */
-      html:hover::-webkit-scrollbar-thumb,
-      body:hover::-webkit-scrollbar-thumb {
-        opacity: 1;
-      }
-
-      /* Smooth fade-in on scroll */
-      ::-webkit-scrollbar-thumb {
-        animation: fadeOutScrollbar 1.5s forwards;
-      }
-
-      @keyframes fadeOutScrollbar {
-        0% {
-          opacity: 1;
-        }
-        100% {
-          opacity: 0;
-        }
-      }
-
-      /* Fix corner on both axes */
-      *::-webkit-scrollbar-corner {
-        background: transparent;
-      }
-
-      *, *::before, *::after {
-        box-sizing: inherit;
-      }
-
+      /* ---------------------------------------------------------
+         Editor basics
+      --------------------------------------------------------- */
       body {
+        padding: 0.75rem;
         display: flex;
         flex-direction: column;
         caret-color: var(--editor-accent);
@@ -865,6 +850,10 @@ var EditorCore = class {
 
       [contenteditable]:focus {
         outline: none;
+      }
+
+      *, *::before, *::after {
+        box-sizing: inherit;
       }
 
       p, div, h1, h2, h3, h4, h5, h6, pre, blockquote, table, li {
@@ -911,6 +900,9 @@ var EditorCore = class {
         padding: 6px;
       }
 
+      /* ---------------------------------------------------------
+         Placeholder
+      --------------------------------------------------------- */
       body.empty::before {
         content: attr(data-placeholder);
         color: var(--editor-placeholder);
@@ -921,47 +913,44 @@ var EditorCore = class {
         opacity: 0.6;
       }
 
-      html, body {
-        transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
-      }
-      
-      /* Highlight LEFT edge */
-      .editor-table-wrapper.handle-left-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-        clip-path: inset(0 calc(100% - 2px) 0 0);
-      }
-
-      /* Highlight RIGHT edge */
-      .editor-table-wrapper.handle-right-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-        clip-path: inset(0 0 0 calc(100% - 2px));
+      /* ---------------------------------------------------------
+         Default image styling (rectangular crop)
+      --------------------------------------------------------- */
+      /* Responsive, full-image display inside the editor */
+      body img {
+        display: block;
+        width: 100% !important;
+        height: auto !important;         /* prevents cropping */
+        object-fit: contain !important;  /* show complete image */
+        border-radius: 4px;
+        margin: 0.75rem 0;
+        max-height: 65vh;                /* prevents overly tall images */
       }
 
-      /* Highlight TOP edge */
-      .editor-table-wrapper.handle-top-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-        clip-path: inset(calc(100% - 2px) 0 0 0);
+      /* Tablet & Desktop \u2013 rectangular feel without cutting image */
+      @media (min-width: 768px) {
+        body img {
+          max-height: 420px;
+        }
       }
 
-      /* Highlight BOTTOM edge */
-      .editor-table-wrapper.handle-bottom-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-        clip-path: inset(0 0 calc(100% - 2px) 0);
+      /* Large screens */
+      @media (min-width: 1200px) {
+        body img {
+          max-height: 520px;
+        }
       }
 
-      /* Highlight corners (full frame) */
-      .editor-table-wrapper.handle-corner-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-      }
-
-      /* Highlight full table border when a handle is hovered */
+      /* ---------------------------------------------------------
+         Table Resize Highlight
+      --------------------------------------------------------- */
+      .editor-table-wrapper.handle-left-hover table,
+      .editor-table-wrapper.handle-right-hover table,
+      .editor-table-wrapper.handle-top-hover table,
+      .editor-table-wrapper.handle-bottom-hover table,
+      .editor-table-wrapper.handle-corner-hover table,
       .editor-table-wrapper.table-active-border table {
-        outline: 2px solid #3b82f6;
+        outline: 2px solid var(--tbl-highlight);
         outline-offset: -2px;
       }
 
@@ -970,6 +959,7 @@ var EditorCore = class {
       }
     </style>
   </head>
+
   <body contenteditable="true" data-placeholder="${this.placeholder}" data-empty="true"></body>
 </html>
 `;
@@ -1386,6 +1376,20 @@ var EditorChain = class {
     if (!this.target) return;
     for (const msg of this.queue) this.target.postMessage(msg, "*");
     this.queue = [];
+  }
+  insertImage(url, alt = "") {
+    const html = `<img src="${url}" alt="${alt.replace(/"/g, "&quot;")}" />`;
+    return this.insertHTML(html);
+  }
+  insertImages(images) {
+    let html = "";
+    for (const img of images) {
+      html += `<img src="${img.url}" alt="${(img.alt || "").replace(
+        /"/g,
+        "&quot;"
+      )}" />`;
+    }
+    return this.insertHTML(html);
   }
   // Inline commands
   exec(cmd, value) {
@@ -1997,125 +2001,23 @@ var HistorySection = ({
 };
 
 // src/components/richtext/ui/indent-outdent.tsx
-var import_jsx_runtime7 = require("react/jsx-runtime");
-var IndentOutdentSection = ({
-  ctx,
-  size
-}) => {
-  const { execute } = useEditorChain();
-  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-      ToolbarButton,
-      {
-        toolButtonSize: size,
-        tooltip: "Indent",
-        disabled: ctx == null ? void 0 : ctx.isIndented,
-        onClick: () => execute("indent"),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Indent, {})
-      }
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-      ToolbarButton,
-      {
-        toolButtonSize: size,
-        tooltip: "Outdent",
-        disabled: !(ctx == null ? void 0 : ctx.isIndented),
-        onClick: () => execute("outdent"),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Outdent, {})
-      }
-    )
-  ] });
-};
-var Indent = (_a) => {
-  var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-    "svg",
-    __spreadProps(__spreadValues({
-      xmlns: "http://www.w3.org/2000/svg",
-      viewBox: "0 0 16 16"
-    }, props), {
-      fill: "currentColor",
-      children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M1.75 2a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M8.75 5.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M8 9.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M1.75 12.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M1 10.407c0 .473.55.755.96.493l3.765-2.408a.578.578 0 0 0 0-.985l-3.765-2.407c-.41-.262-.96.02-.96.493z" })
-      ]
-    })
-  );
-};
-var Outdent = (_a) => {
-  var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-    "svg",
-    __spreadProps(__spreadValues({
-      xmlns: "http://www.w3.org/2000/svg",
-      viewBox: "0 0 16 16"
-    }, props), {
-      fill: "currentColor",
-      children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M1.75 2a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M8.75 5.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M8 9.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M1.75 12.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { d: "M6 10.407c0 .473-.55.755-.96.493l-3.765-2.408a.578.578 0 0 1 0-.985l3.765-2.407c.41-.262.96.02.96.493z" })
-      ]
-    })
-  );
-};
-
-// src/components/richtext/ui/list-selector.tsx
-var import_lucide_react3 = require("lucide-react");
-var import_jsx_runtime8 = require("react/jsx-runtime");
-var ListSelectorSection = ({
-  ctx,
-  size = "sm"
-}) => {
-  const { execute } = useEditorChain();
-  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(import_jsx_runtime8.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-      ToolbarButton,
-      {
-        onClick: () => execute("bulletList"),
-        active: ctx.unorderedList,
-        toolButtonSize: size,
-        tooltip: "Unordered List",
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(import_lucide_react3.List, {})
-      }
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-      ToolbarButton,
-      {
-        onClick: () => execute("orderedList"),
-        active: ctx.orderedList,
-        toolButtonSize: size,
-        tooltip: "Ordered List",
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(import_lucide_react3.ListOrdered, {})
-      }
-    )
-  ] });
-};
-
-// src/components/richtext/ui/table-picker.tsx
-var import_lucide_react6 = require("lucide-react");
 var React4 = __toESM(require("react"), 1);
 
 // src/components/ui/dialog.tsx
 var DialogPrimitive = __toESM(require("@radix-ui/react-dialog"), 1);
-var import_lucide_react4 = require("lucide-react");
-var import_jsx_runtime9 = require("react/jsx-runtime");
+var import_lucide_react3 = require("lucide-react");
+var import_jsx_runtime7 = require("react/jsx-runtime");
 function Dialog(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(DialogPrimitive.Root, __spreadValues({ "data-slot": "dialog" }, props));
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(DialogPrimitive.Root, __spreadValues({ "data-slot": "dialog" }, props));
 }
 function DialogTrigger(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(DialogPrimitive.Trigger, __spreadValues({ "data-slot": "dialog-trigger" }, props));
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(DialogPrimitive.Trigger, __spreadValues({ "data-slot": "dialog-trigger" }, props));
 }
 function DialogPortal(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(DialogPrimitive.Portal, __spreadValues({ "data-slot": "dialog-portal" }, props));
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(DialogPrimitive.Portal, __spreadValues({ "data-slot": "dialog-portal" }, props));
 }
 function DialogOverlay(_a) {
   var _b = _a, {
@@ -2123,7 +2025,7 @@ function DialogOverlay(_a) {
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
     DialogPrimitive.Overlay,
     __spreadValues({
       "data-slot": "dialog-overlay",
@@ -2144,9 +2046,9 @@ function DialogContent(_a) {
     "children",
     "showCloseButton"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(DialogPortal, { "data-slot": "dialog-portal", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(DialogOverlay, {}),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(DialogPortal, { "data-slot": "dialog-portal", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(DialogOverlay, {}),
+    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       DialogPrimitive.Content,
       __spreadProps(__spreadValues({
         "data-slot": "dialog-content",
@@ -2157,14 +2059,14 @@ function DialogContent(_a) {
       }, props), {
         children: [
           children,
-          showCloseButton && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+          showCloseButton && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
             DialogPrimitive.Close,
             {
               "data-slot": "dialog-close",
               className: "ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(import_lucide_react4.XIcon, {}),
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "sr-only", children: "Close" })
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(import_lucide_react3.XIcon, {}),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "sr-only", children: "Close" })
               ]
             }
           )
@@ -2175,7 +2077,7 @@ function DialogContent(_a) {
 }
 function DialogHeader(_a) {
   var _b = _a, { className } = _b, props = __objRest(_b, ["className"]);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
     "div",
     __spreadValues({
       "data-slot": "dialog-header",
@@ -2189,7 +2091,7 @@ function DialogTitle(_a) {
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
     DialogPrimitive.Title,
     __spreadValues({
       "data-slot": "dialog-title",
@@ -2200,15 +2102,15 @@ function DialogTitle(_a) {
 
 // src/components/ui/dropdown-menu.tsx
 var DropdownMenuPrimitive = __toESM(require("@radix-ui/react-dropdown-menu"), 1);
-var import_lucide_react5 = require("lucide-react");
-var import_jsx_runtime10 = require("react/jsx-runtime");
+var import_lucide_react4 = require("lucide-react");
+var import_jsx_runtime8 = require("react/jsx-runtime");
 function DropdownMenu(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(DropdownMenuPrimitive.Root, __spreadValues({ "data-slot": "dropdown-menu" }, props));
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(DropdownMenuPrimitive.Root, __spreadValues({ "data-slot": "dropdown-menu" }, props));
 }
 function DropdownMenuTrigger(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
     DropdownMenuPrimitive.Trigger,
     __spreadValues({
       "data-slot": "dropdown-menu-trigger"
@@ -2223,7 +2125,7 @@ function DropdownMenuContent(_a) {
     "className",
     "sideOffset"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(DropdownMenuPrimitive.Portal, { children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(DropdownMenuPrimitive.Portal, { children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
     DropdownMenuPrimitive.Content,
     __spreadValues({
       "data-slot": "dropdown-menu-content",
@@ -2237,7 +2139,7 @@ function DropdownMenuContent(_a) {
 }
 function DropdownMenuGroup(_a) {
   var props = __objRest(_a, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(DropdownMenuPrimitive.Group, __spreadValues({ "data-slot": "dropdown-menu-group" }, props));
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(DropdownMenuPrimitive.Group, __spreadValues({ "data-slot": "dropdown-menu-group" }, props));
 }
 function DropdownMenuItem(_a) {
   var _b = _a, {
@@ -2249,7 +2151,7 @@ function DropdownMenuItem(_a) {
     "inset",
     "variant"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
     DropdownMenuPrimitive.Item,
     __spreadValues({
       "data-slot": "dropdown-menu-item",
@@ -2262,18 +2164,52 @@ function DropdownMenuItem(_a) {
     }, props)
   );
 }
+function DropdownMenuLabel(_a) {
+  var _b = _a, {
+    className,
+    inset
+  } = _b, props = __objRest(_b, [
+    "className",
+    "inset"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    DropdownMenuPrimitive.Label,
+    __spreadValues({
+      "data-slot": "dropdown-menu-label",
+      "data-inset": inset,
+      className: cn(
+        "px-2 py-1.5 text-sm font-medium data-[inset]:pl-8",
+        className
+      )
+    }, props)
+  );
+}
+function DropdownMenuSeparator(_a) {
+  var _b = _a, {
+    className
+  } = _b, props = __objRest(_b, [
+    "className"
+  ]);
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    DropdownMenuPrimitive.Separator,
+    __spreadValues({
+      "data-slot": "dropdown-menu-separator",
+      className: cn("bg-border -mx-1 my-1 h-px", className)
+    }, props)
+  );
+}
 
 // src/components/ui/input.tsx
-var import_jsx_runtime11 = require("react/jsx-runtime");
+var import_jsx_runtime9 = require("react/jsx-runtime");
 function Input(_a) {
   var _b = _a, { className, type } = _b, props = __objRest(_b, ["className", "type"]);
-  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
     "input",
     __spreadValues({
       type,
       "data-slot": "input",
       className: cn(
-        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-border h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
         "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
         "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
         className
@@ -2284,14 +2220,14 @@ function Input(_a) {
 
 // src/components/ui/label.tsx
 var LabelPrimitive = __toESM(require("@radix-ui/react-label"), 1);
-var import_jsx_runtime12 = require("react/jsx-runtime");
+var import_jsx_runtime10 = require("react/jsx-runtime");
 function Label2(_a) {
   var _b = _a, {
     className
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
     LabelPrimitive.Root,
     __spreadValues({
       "data-slot": "label",
@@ -2304,10 +2240,10 @@ function Label2(_a) {
 }
 
 // src/components/ui/skeleton.tsx
-var import_jsx_runtime13 = require("react/jsx-runtime");
+var import_jsx_runtime11 = require("react/jsx-runtime");
 function Skeleton(_a) {
   var _b = _a, { className } = _b, props = __objRest(_b, ["className"]);
-  return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
     "div",
     __spreadValues({
       "data-slot": "skeleton",
@@ -2318,14 +2254,14 @@ function Skeleton(_a) {
 
 // src/components/ui/switch.tsx
 var SwitchPrimitive = __toESM(require("@radix-ui/react-switch"), 1);
-var import_jsx_runtime14 = require("react/jsx-runtime");
+var import_jsx_runtime12 = require("react/jsx-runtime");
 function Switch(_a) {
   var _b = _a, {
     className
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
     SwitchPrimitive.Root,
     __spreadProps(__spreadValues({
       "data-slot": "switch",
@@ -2334,7 +2270,7 @@ function Switch(_a) {
         className
       )
     }, props), {
-      children: /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
+      children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
         SwitchPrimitive.Thumb,
         {
           "data-slot": "switch-thumb",
@@ -2349,14 +2285,14 @@ function Switch(_a) {
 
 // src/components/ui/tabs.tsx
 var TabsPrimitive = __toESM(require("@radix-ui/react-tabs"), 1);
-var import_jsx_runtime15 = require("react/jsx-runtime");
+var import_jsx_runtime13 = require("react/jsx-runtime");
 function Tabs(_a) {
   var _b = _a, {
     className
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
     TabsPrimitive.Root,
     __spreadValues({
       "data-slot": "tabs",
@@ -2370,7 +2306,7 @@ function TabsList(_a) {
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
     TabsPrimitive.List,
     __spreadValues({
       "data-slot": "tabs-list",
@@ -2387,7 +2323,7 @@ function TabsTrigger(_a) {
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
     TabsPrimitive.Trigger,
     __spreadValues({
       "data-slot": "tabs-trigger",
@@ -2404,7 +2340,7 @@ function TabsContent(_a) {
   } = _b, props = __objRest(_b, [
     "className"
   ]);
-  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
     TabsPrimitive.Content,
     __spreadValues({
       "data-slot": "tabs-content",
@@ -2413,12 +2349,169 @@ function TabsContent(_a) {
   );
 }
 
-// src/components/richtext/ui/table-picker.tsx
-var import_jsx_runtime16 = require("react/jsx-runtime");
-var TablePicker = React4.forwardRef((_a, ref) => {
-  var _b = _a, { onSelect } = _b, buttonProps = __objRest(_b, ["onSelect"]);
+// src/components/richtext/ui/indent-outdent.tsx
+var import_jsx_runtime14 = require("react/jsx-runtime");
+var IconIndent = (_a) => {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ (0, import_jsx_runtime14.jsxs)(
+    "svg",
+    __spreadProps(__spreadValues({
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 16 16",
+      fill: "currentColor"
+    }, props), {
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M1.75 2a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M8.75 5.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M8 9.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75" }),
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M1.75 12.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M1 10.407c0 .473.55.755.96.493l3.765-2.408a.578.578 0 0 0 0-.985l-3.765-2.407c-.41-.262-.96.02-.96.493z" })
+      ]
+    })
+  );
+};
+var IconOutdent = (_a) => {
+  var props = __objRest(_a, []);
+  return /* @__PURE__ */ (0, import_jsx_runtime14.jsxs)(
+    "svg",
+    __spreadProps(__spreadValues({
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 16 16",
+      fill: "currentColor"
+    }, props), {
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M1.75 2a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M8.75 5.5a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M8 9.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75" }),
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M1.75 12.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5z" }),
+        /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("path", { d: "M6 10.407c0 .473-.55.755-.96.493l-3.765-2.408a.578.578 0 0 1 0-.985l3.765-2.407c.41-.262.96.02.96.493z" })
+      ]
+    })
+  );
+};
+var IndentOutdentSection = ({
+  ctx,
+  size
+}) => {
+  var _a;
+  const { execute } = useEditorChain();
   const [open, setOpen] = React4.useState(false);
-  const [table, setTable] = React4.useState({ rows: 2, cols: 2 });
+  const isIndented = (_a = ctx == null ? void 0 : ctx.isIndented) != null ? _a : false;
+  return /* @__PURE__ */ (0, import_jsx_runtime14.jsxs)(DropdownMenu, { open, onOpenChange: setOpen, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
+      ToolbarButton,
+      {
+        toolButtonSize: size,
+        active: open,
+        tooltip: "Indentation",
+        children: isIndented ? /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(IconOutdent, { className: "h-4 w-4" }) : /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(IconIndent, { className: "h-4 w-4" })
+      }
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime14.jsxs)(
+      DropdownMenuContent,
+      {
+        align: "end",
+        className: "flex gap-1 p-2 min-w-0 rounded-md backdrop-blur-sm bg-background/95 border shadow-sm transition-all",
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
+            ToolbarButton,
+            {
+              toolButtonSize: size,
+              tooltip: "Indent",
+              disabled: isIndented,
+              onClick: () => {
+                execute("indent");
+                setOpen(false);
+              },
+              children: /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(IconIndent, { className: "w-4 h-4" })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
+            ToolbarButton,
+            {
+              toolButtonSize: size,
+              tooltip: "Outdent",
+              disabled: !isIndented,
+              onClick: () => {
+                execute("outdent");
+                setOpen(false);
+              },
+              children: /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(IconOutdent, { className: "w-4 h-4" })
+            }
+          )
+        ]
+      }
+    )
+  ] });
+};
+
+// src/components/richtext/ui/list-selector.tsx
+var React5 = __toESM(require("react"), 1);
+var import_lucide_react5 = require("lucide-react");
+var import_jsx_runtime15 = require("react/jsx-runtime");
+var ListSelectorSection = ({
+  ctx,
+  size = "sm"
+}) => {
+  const [_open, _setOpen] = React5.useState(false);
+  const { execute } = useEditorChain();
+  const listOptions = [
+    {
+      cmd: "bulletList",
+      tooltip: "Unordered List",
+      icon: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(import_lucide_react5.List, { className: "h-4 w-4" }),
+      active: ctx == null ? void 0 : ctx.unorderedList
+    },
+    {
+      cmd: "orderedList",
+      icon: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(import_lucide_react5.ListOrdered, { className: "h-4 w-4" }),
+      active: ctx == null ? void 0 : ctx.orderedList,
+      tooltip: "Ordered List"
+    }
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(DropdownMenu, { open: _open, onOpenChange: _setOpen, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+      ToolbarButton,
+      {
+        tooltip: "List Selector",
+        toolButtonSize: size,
+        active: _open,
+        children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(import_lucide_react5.List, {})
+      }
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+      DropdownMenuContent,
+      {
+        align: "end",
+        side: "bottom",
+        className: "flex gap-1 py-1.5 px-2 min-w-0 bg-background/95 backdrop-blur-md rounded-md shadow-sm border",
+        children: listOptions.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+          ToolbarButton,
+          {
+            tooltip: opt.tooltip,
+            toolButtonSize: "sm",
+            active: opt.active,
+            onClick: () => {
+              execute(opt.cmd);
+              _setOpen(!_open);
+            },
+            children: opt.icon
+          },
+          opt.cmd
+        ))
+      }
+    )
+  ] });
+};
+
+// src/components/richtext/ui/table-picker.tsx
+var import_lucide_react6 = require("lucide-react");
+var React6 = __toESM(require("react"), 1);
+var import_jsx_runtime16 = require("react/jsx-runtime");
+var TablePicker = React6.forwardRef((_a, ref) => {
+  var _b = _a, { onSelect } = _b, buttonProps = __objRest(_b, ["onSelect"]);
+  const [open, setOpen] = React6.useState(false);
+  const [table, setTable] = React6.useState({ rows: 2, cols: 2 });
   const maxRows = 10;
   const maxCols = 10;
   return /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)(DropdownMenu, { open, onOpenChange: setOpen, children: [
@@ -2428,7 +2521,7 @@ var TablePicker = React4.forwardRef((_a, ref) => {
         ref,
         toolButtonSize: "xs",
         tooltip: "Insert Table",
-        "data-active": open
+        active: open
       }, buttonProps), {
         children: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(import_lucide_react6.Table, {})
       })
@@ -2462,7 +2555,7 @@ var TablePicker = React4.forwardRef((_a, ref) => {
 TablePicker.displayName = "TablePicker";
 
 // src/components/richtext/ui/text-aligner.tsx
-var React5 = __toESM(require("react"), 1);
+var React7 = __toESM(require("react"), 1);
 var import_lucide_react7 = require("lucide-react");
 var import_jsx_runtime17 = require("react/jsx-runtime");
 var TextAlignerSection = (_a) => {
@@ -2474,7 +2567,7 @@ var TextAlignerSection = (_a) => {
     "ctx"
   ]);
   var _a2;
-  const [_open, _setOpen] = React5.useState(false);
+  const [_open, _setOpen] = React7.useState(false);
   const { execute } = useEditorChain();
   const alignOptions = [
     {
@@ -2502,7 +2595,7 @@ var TextAlignerSection = (_a) => {
       ToolbarButton,
       __spreadProps(__spreadValues({}, props), {
         tooltip: "Text Alignment",
-        "data-active": _open,
+        active: _open,
         toolButtonSize: size,
         children: activeAlign
       })
@@ -2532,7 +2625,7 @@ var TextAlignerSection = (_a) => {
 };
 
 // src/components/richtext/ui/text-format.tsx
-var React6 = __toESM(require("react"), 1);
+var React8 = __toESM(require("react"), 1);
 var import_lucide_react8 = require("lucide-react");
 var import_jsx_runtime18 = require("react/jsx-runtime");
 var allFormats = [
@@ -2626,7 +2719,7 @@ var TextFormatSection = ({
   size = "sm"
 }) => {
   const { execute } = useEditorChain();
-  const visibleFormats = React6.useMemo(() => {
+  const visibleFormats = React8.useMemo(() => {
     return allFormats.filter((btn) => {
       var _a, _b;
       switch (btn.type) {
@@ -2689,15 +2782,15 @@ var TextFormatSection = ({
 };
 
 // src/components/richtext/ui/text-style.tsx
-var React8 = __toESM(require("react"), 1);
+var React10 = __toESM(require("react"), 1);
 var import_lucide_react10 = require("lucide-react");
 
 // src/components/richtext/ui/color-picker.tsx
-var React7 = __toESM(require("react"), 1);
+var React9 = __toESM(require("react"), 1);
 var import_react_color = require("react-color");
 var import_lucide_react9 = require("lucide-react");
 var import_jsx_runtime19 = require("react/jsx-runtime");
-var ColorHighlighter = React7.forwardRef(
+var ColorHighlighter = React9.forwardRef(
   (_a, ref) => {
     var _b = _a, {
       color,
@@ -2718,13 +2811,13 @@ var ColorHighlighter = React7.forwardRef(
       "icon",
       "size"
     ]);
-    const [isOpen, setIsOpen] = React7.useState(false);
-    const [tempColor, setTempColor] = React7.useState(color || "#000000");
+    const [isOpen, setIsOpen] = React9.useState(false);
+    const [tempColor, setTempColor] = React9.useState(color || "#000000");
     const IconComponent = icon || import_lucide_react9.Check;
     const handleChange = (clr) => {
       setTempColor(clr.hex);
     };
-    React7.useEffect(() => {
+    React9.useEffect(() => {
       const close = () => setIsOpen(false);
       window.addEventListener("editor-iframe-click", close);
       return () => window.removeEventListener("editor-iframe-click", close);
@@ -2737,7 +2830,7 @@ var ColorHighlighter = React7.forwardRef(
       /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
         ToolbarButton,
         __spreadProps(__spreadValues({
-          "data-active": isOpen,
+          active: isOpen,
           className,
           ref,
           disabled,
@@ -2906,7 +2999,7 @@ var StyleFormatSection = ({
   size = "sm",
   highlighter = true
 }) => {
-  const [isBackground, setIsBackground] = React8.useState("text");
+  const [isBackground, setIsBackground] = React10.useState("text");
   const { execute } = useEditorChain();
   const handleUpdateColor = (color) => {
     const cmd = isBackground === "text" ? "color" : "highlight";
@@ -2977,8 +3070,8 @@ var DotsLoader = () => /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { c
 var SpinnerLoader = () => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "flex items-center justify-center h-48 w-full border border-border rounded-md bg-white", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "w-6 h-6 border-4 border-gray-300 border-t-gray-700 rounded-full animate-spin" }) });
 
 // src/components/richtext/toolbar/ToolbarChain.tsx
-var React11 = __toESM(require("react"), 1);
-var import_lucide_react13 = require("lucide-react");
+var React14 = __toESM(require("react"), 1);
+var import_lucide_react14 = require("lucide-react");
 
 // src/components/theme-provider.tsx
 var import_next_themes = require("next-themes");
@@ -2993,7 +3086,7 @@ function ThemeProvider(_a) {
 }
 
 // src/components/richtext/ui/link-insert.tsx
-var React9 = __toESM(require("react"), 1);
+var React11 = __toESM(require("react"), 1);
 var import_lucide_react11 = require("lucide-react");
 var import_jsx_runtime23 = require("react/jsx-runtime");
 var AnchorLink = (_a) => {
@@ -3004,14 +3097,14 @@ var AnchorLink = (_a) => {
     "size",
     "ctx"
   ]);
-  const [_open, _setOpen] = React9.useState(false);
-  const [url, setUrl] = React9.useState("");
-  const [newTab, setNewTab] = React9.useState(true);
-  const [error, setError] = React9.useState("");
-  const [hasSelection, setHasSelection] = React9.useState(false);
+  const [_open, _setOpen] = React11.useState(false);
+  const [url, setUrl] = React11.useState("");
+  const [newTab, setNewTab] = React11.useState(true);
+  const [error, setError] = React11.useState("");
+  const [hasSelection, setHasSelection] = React11.useState(false);
   const { execute } = useEditorChain();
   const { core } = useEditor();
-  React9.useEffect(() => {
+  React11.useEffect(() => {
     const interval = setInterval(() => {
       var _a2;
       const sel = (_a2 = core == null ? void 0 : core.win) == null ? void 0 : _a2.getSelection();
@@ -3022,7 +3115,7 @@ var AnchorLink = (_a) => {
     }, 200);
     return () => clearInterval(interval);
   }, [core]);
-  React9.useEffect(() => {
+  React11.useEffect(() => {
     var _a2, _b2;
     if (ctx.link && ((_a2 = core == null ? void 0 : core.win) == null ? void 0 : _a2.getSelection)) {
       const sel = core.win.getSelection();
@@ -3171,42 +3264,71 @@ var AnchorLink = (_a) => {
   ] });
 };
 
+// src/components/richtext/ui/image-picker.tsx
+var React13 = __toESM(require("react"), 1);
+
 // src/components/richtext/ui/image-modal.tsx
-var React10 = __toESM(require("react"), 1);
+var React12 = __toESM(require("react"), 1);
 var import_lucide_react12 = require("lucide-react");
+var import_image = __toESM(require("next/image"), 1);
 var import_jsx_runtime24 = require("react/jsx-runtime");
-var ImagePicker = ({
-  onChange,
+var ImageModal = ({
+  onInsert,
   selected,
   maxSize = 5,
-  multiple = true
+  multiple = true,
+  open,
+  setOpen
 }) => {
-  const [open, setOpen] = React10.useState(false);
-  const [isUploading, setIsUploading] = React10.useState(false);
-  const [images, setImages] = React10.useState([]);
-  const [loadingImages, setLoadingImages] = React10.useState(true);
-  const [uploadProgress, setUploadProgress] = React10.useState(0);
-  const [searchQuery, setSearchQuery] = React10.useState("");
-  const [viewMode, setViewMode] = React10.useState("grid");
-  const [dragActive, setDragActive] = React10.useState(false);
-  const [selectedImages, setSelectedImage] = React10.useState(
+  const [isUploading, setIsUploading] = React12.useState(false);
+  const [images, setImages] = React12.useState([]);
+  const [loadingImages, setLoadingImages] = React12.useState(true);
+  const [uploadProgress, setUploadProgress] = React12.useState(0);
+  const [searchQuery, setSearchQuery] = React12.useState("");
+  const [viewMode, setViewMode] = React12.useState("grid");
+  const [dragActive, setDragActive] = React12.useState(false);
+  const [selectedImages, setSelectedImage] = React12.useState(
     selected ? [selected] : []
   );
   const filteredImages = images.filter(
-    (img) => img.toLowerCase().includes(searchQuery.toLowerCase())
+    (img) => img.url.toLowerCase().includes(searchQuery.toLowerCase()) || img.alt.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     setLoadingImages(true);
     setTimeout(() => {
       setImages([
-        "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?w=400&h=600&fit=crop",
-        "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1492633423870-43d1cd2775eb?w=400&h=600&fit=crop",
-        "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&h=400&fit=crop"
+        {
+          url: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop",
+          alt: "First Image"
+        },
+        {
+          url: "https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?w=400&h=600&fit=crop",
+          alt: "Second Image"
+        },
+        {
+          url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop",
+          alt: "Third Image"
+        },
+        {
+          url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop",
+          alt: "Fourth Image"
+        },
+        {
+          url: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&h=400&fit=crop",
+          alt: "Fifth Image"
+        },
+        {
+          url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop",
+          alt: "Sixth Image"
+        },
+        {
+          url: "https://images.unsplash.com/photo-1492633423870-43d1cd2775eb?w=400&h=600&fit=crop",
+          alt: "Seventh Image"
+        },
+        {
+          url: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&h=400&fit=crop",
+          alt: "Eight Image"
+        }
       ]);
       setLoadingImages(false);
     }, 1e3);
@@ -3234,7 +3356,11 @@ var ImagePicker = ({
     reader.onload = () => {
       setTimeout(() => {
         const result = reader.result;
-        onChange == null ? void 0 : onChange(result);
+        const image = {
+          url: result,
+          alt: result
+        };
+        setSelectedImage == null ? void 0 : setSelectedImage((prev) => [...prev, image]);
         setIsUploading(false);
         setUploadProgress(100);
         clearInterval(progress);
@@ -3251,7 +3377,7 @@ var ImagePicker = ({
   const handleSelectImage = (url) => {
     if (multiple) {
       setSelectedImage(
-        (prev) => prev.includes(url) ? prev.filter((item) => item !== url) : [...prev, url]
+        (prev) => prev.includes(url) ? prev.filter((item) => item.url !== url.url) : [...prev, url]
       );
     } else {
       setSelectedImage([url]);
@@ -3270,7 +3396,7 @@ var ImagePicker = ({
     }
   };
   const isSelected = (src) => {
-    return selectedImages.find((i) => i === src);
+    return selectedImages.find((i) => (i == null ? void 0 : i.url) === (src == null ? void 0 : src.url));
   };
   return /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "flex items-center gap-3", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Dialog, { open, onOpenChange: setOpen, children: [
     /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(DialogTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
@@ -3282,7 +3408,7 @@ var ImagePicker = ({
         children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.ImagePlus, { className: "h-4 w-4" })
       }
     ) }),
-    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(DialogContent, { className: "sm:max-w-[700px] max-h-[80vh] p-0 overflow-hidden rounded-md shadow-2xl flex flex-col", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(DialogContent, { className: "sm:max-w-md max-h-[80vh] p-0 overflow-hidden rounded-md shadow-2xl flex flex-col", children: [
       /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(DialogHeader, { className: "p-4 border-b border-border/50 sticky top-0 bg-background z-0", children: [
         /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(DialogTitle, { className: "text-lg font-semibold", children: "Choose or Upload Image" }),
         /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex items-center gap-2 justify-between mt-3", children: [
@@ -3428,9 +3554,12 @@ var ImagePicker = ({
                               "rounded-md"
                             ),
                             children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
-                              "img",
+                              import_image.default,
                               {
-                                src,
+                                width: 100,
+                                height: 100,
+                                loading: "lazy",
+                                src: src.url,
                                 alt: `Media ${i}`,
                                 className: "object-cover w-full h-full group-hover:scale-105 ease-in-out duration-150 transform transition-transform"
                               }
@@ -3444,7 +3573,7 @@ var ImagePicker = ({
                             "Image ",
                             i + 1
                           ] }),
-                          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("p", { className: "text-xs text-muted-foreground truncate", children: src.split("/").pop() })
+                          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("p", { className: "text-xs text-muted-foreground truncate", children: src.url.split("/").pop() })
                         ] })
                       ]
                     }
@@ -3469,7 +3598,7 @@ var ImagePicker = ({
             {
               variant: "outline",
               size: "sm",
-              onClick: () => setOpen(false),
+              onClick: () => setOpen == null ? void 0 : setOpen(!open),
               children: "Cancel"
             }
           ),
@@ -3479,7 +3608,10 @@ var ImagePicker = ({
               size: "sm",
               variant: "primary",
               disabled: !selectedImages.length || isUploading,
-              onClick: () => setOpen(false),
+              onClick: () => {
+                onInsert == null ? void 0 : onInsert(selectedImages);
+                setOpen == null ? void 0 : setOpen(!open);
+              },
               className: "gap-2",
               children: isUploading ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(import_jsx_runtime24.Fragment, { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react12.Loader2, { className: "h-4 w-4 animate-spin" }),
@@ -3493,14 +3625,141 @@ var ImagePicker = ({
   ] }) });
 };
 
-// src/components/richtext/toolbar/ToolbarChain.tsx
+// src/components/richtext/ui/image-picker.tsx
+var import_lucide_react13 = require("lucide-react");
 var import_jsx_runtime25 = require("react/jsx-runtime");
-var ToolbarChain = ({ format }) => {
+var ImagePickerBlock = ({
+  modal,
+  isMultiple
+}) => {
+  const [_open, _setOpen] = React13.useState(false);
+  const [urls, setUrls] = React13.useState([""]);
+  const [alts, setAlts] = React13.useState([""]);
+  const { execute } = useEditorChain();
+  const addField = () => {
+    setUrls((prev) => [...prev, ""]);
+    setAlts((prev) => [...prev, ""]);
+  };
+  const handleChange = (i, type, value) => {
+    if (type === "url") {
+      const updated = [...urls];
+      updated[i] = value;
+      setUrls(updated);
+    } else {
+      const updated = [...alts];
+      updated[i] = value;
+      setAlts(updated);
+    }
+  };
+  const handleInsert = () => {
+    const images = urls.map((u, i) => ({ url: u.trim(), alt: alts[i].trim() })).filter((img) => img.url);
+    if (!images.length) return;
+    if (images.length === 1) {
+      execute("insertImage", (images[0].url, images[0].alt));
+    } else {
+      execute("insertImages", images);
+    }
+    setUrls([""]);
+    setAlts([""]);
+    _setOpen(false);
+  };
+  return !modal ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(DropdownMenu, { open: _open, onOpenChange: _setOpen, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+      ToolbarButton,
+      {
+        toolButtonSize: "xs",
+        active: _open,
+        tooltip: "Add Image URL",
+        children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react13.ImagePlus, { className: "h-4 w-4" })
+      }
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+      DropdownMenuContent,
+      {
+        align: "end",
+        className: "w-72 p-4 space-y-4 rounded-md",
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(DropdownMenuLabel, { className: "text-sm px-0 py-0 my-0 font-medium", children: "Add Image URL(s)" }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(DropdownMenuSeparator, { className: "mb-2" }),
+          urls.map((url, i) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(DropdownMenuGroup, { className: "space-y-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Label2, { children: [
+              "Image URL ",
+              urls.length > 1 ? i + 1 : ""
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+              Input,
+              {
+                placeholder: "https://example.com/image.png",
+                className: "rounded",
+                value: url,
+                onChange: (e) => handleChange(i, "url", e.target.value)
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Label2, { children: "Alt Text" }),
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+              Input,
+              {
+                className: "rounded",
+                placeholder: "Describe the image",
+                value: alts[i],
+                onChange: (e) => handleChange(i, "alt", e.target.value)
+              }
+            )
+          ] }, i)),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+            Button,
+            {
+              variant: "secondary",
+              className: "rounded",
+              size: "sm",
+              onClick: addField,
+              children: "+ Add More"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+            Button,
+            {
+              onClick: handleInsert,
+              variant: "primary",
+              size: "sm",
+              className: "w-full rounded",
+              children: [
+                "Insert Image",
+                urls.length > 1 ? "s" : ""
+              ]
+            }
+          )
+        ]
+      }
+    )
+  ] }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+    ImageModal,
+    {
+      open: _open,
+      multiple: isMultiple,
+      setOpen: _setOpen,
+      onInsert: (images) => {
+        console.log(images);
+        if (images.length === 1) {
+          const img = images[0];
+          execute("insertImage", img == null ? void 0 : img.url, img == null ? void 0 : img.alt);
+        } else {
+          execute("insertImages", images);
+        }
+      }
+    }
+  );
+};
+
+// src/components/richtext/toolbar/ToolbarChain.tsx
+var import_jsx_runtime26 = require("react/jsx-runtime");
+var ToolbarChain = ({
+  format,
+  image
+}) => {
   const { iframeRef, ctx } = useEditor();
-  const [chain, setChain] = React11.useState(null);
-  const [mounted, setMounted] = React11.useState(false);
-  React11.useEffect(() => {
-    setMounted(true);
+  const [chain, setChain] = React14.useState(null);
+  React14.useEffect(() => {
     const initChain = () => {
       var _a;
       if (((_a = iframeRef.current) == null ? void 0 : _a.contentWindow) && !chain) {
@@ -3511,37 +3770,43 @@ var ToolbarChain = ({ format }) => {
     const timer = setInterval(initChain, 300);
     return () => {
       clearInterval(timer);
-      setMounted(false);
     };
   }, [iframeRef, chain]);
-  if (!mounted) {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarWrapper, { className: "flex flex-nowrap gap-2 border-b py-2 px-3 bg-background/80 backdrop-blur-xs", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex items-center gap-1 animate-pulse", children: [...Array(12)].map((_, i) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "h-8 w-8 bg-muted rounded-md" }, i)) }) });
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
     ThemeProvider,
     {
       attribute: "class",
       defaultTheme: "system",
       enableSystem: true,
       disableTransitionOnChange: true,
-      children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(ToolbarWrapper, { className: "flex flex-nowrap gap-0 border-b py-2 px-3 bg-background/95 backdrop-blur-xs supports-backdrop-blur:bg-background/60 sticky top-0 z-40", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(HistorySection, { ctx, size: "xs" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TextFormatSection, { ctx, size: "xs", format }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(StyleFormatSection, { ctx, size: "xs" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(ToolbarGroup, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ListSelectorSection, { ctx, size: "xs" }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(IndentOutdentSection, { size: "xs", ctx })
+      children: /* @__PURE__ */ (0, import_jsx_runtime26.jsxs)(ToolbarWrapper, { className: "flex flex-nowrap gap-0 border-b py-2 px-3 bg-background/95 backdrop-blur-xs supports-backdrop-blur:bg-background/60 sticky top-0 z-40", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(HistorySection, { ctx, size: "xs" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsxs)(ToolbarGroup, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
+            ToolbarButton,
+            {
+              toolButtonSize: "xs",
+              tooltip: "AI Enhance",
+              className: "bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0",
+              children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(import_lucide_react14.Sparkles, { className: "w-4 h-4" })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(TextFormatSection, { ctx, size: "xs", format })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TextAlignerSection, { ctx, size: "xs" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(ToolbarGroup, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AnchorLink, { size: "xs", ctx }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ImagePicker, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(StyleFormatSection, { ctx, size: "xs" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsxs)(ToolbarGroup, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ListSelectorSection, { ctx, size: "xs" }),
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(IndentOutdentSection, { size: "xs", ctx }),
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(TextAlignerSection, { ctx, size: "xs" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsxs)(ToolbarGroup, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(AnchorLink, { size: "xs", ctx }),
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ImagePickerBlock, __spreadValues({}, image)),
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
             TablePicker,
             {
               variant: "ghost",
@@ -3555,7 +3820,7 @@ var ToolbarChain = ({ format }) => {
               }
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
             ToolbarButton,
             {
               toolButtonSize: "xs",
@@ -3564,42 +3829,31 @@ var ToolbarChain = ({ format }) => {
                 var _a;
                 return (_a = chain == null ? void 0 : chain.insertHTML("<hr>")) == null ? void 0 : _a.run();
               },
-              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react13.Minus, { className: "w-4 h-4" })
+              children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(import_lucide_react14.Minus, { className: "w-4 h-4" })
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ToolbarButtonSeparator, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(ToolbarGroup, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
-            ToolbarButton,
-            {
-              toolButtonSize: "xs",
-              tooltip: "AI Enhance",
-              className: "bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0",
-              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react13.Sparkles, { className: "w-4 h-4" })
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
-            ToolbarButton,
-            {
-              toolButtonSize: "xs",
-              tooltip: "Clear Formatting",
-              onClick: () => {
-                var _a;
-                return (_a = chain == null ? void 0 : chain.clear()) == null ? void 0 : _a.run();
-              },
-              variant: "outline",
-              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react13.Ban, { className: "w-4 h-4" })
-            }
-          )
-        ] })
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarButtonSeparator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
+          ToolbarButton,
+          {
+            toolButtonSize: "xs",
+            tooltip: "Clear Formatting",
+            onClick: () => {
+              var _a;
+              return (_a = chain == null ? void 0 : chain.clear()) == null ? void 0 : _a.run();
+            },
+            variant: "outline",
+            children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(import_lucide_react14.Ban, { className: "w-4 h-4" })
+          }
+        ) })
       ] })
     }
   );
 };
 
 // src/components/richtext/editor.tsx
-var import_jsx_runtime26 = require("react/jsx-runtime");
+var import_jsx_runtime27 = require("react/jsx-runtime");
 var RichtextEditor = ({
   initialContent,
   loader = "shine",
@@ -3616,8 +3870,8 @@ var RichtextEditor = ({
     shadow: "md"
   }
 }) => {
-  const [isMount, setIsMount] = React12.useState(false);
-  React12.useEffect(() => {
+  const [isMount, setIsMount] = React15.useState(false);
+  React15.useEffect(() => {
     const isInit = setInterval(() => {
       setIsMount(true);
     }, 300);
@@ -3631,16 +3885,16 @@ var RichtextEditor = ({
   if (!isMount) {
     switch (loader) {
       case "shine":
-        return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(EditorSkeleton, { animation: "shine" });
+        return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(EditorSkeleton, { animation: "shine" });
       case "skeleton":
-        return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(EditorSkeleton, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(EditorSkeleton, {});
       case "dots":
-        return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(DotsLoader, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(DotsLoader, {});
       default:
-        return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(SpinnerLoader, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(SpinnerLoader, {});
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
     EditorProvider,
     {
       placeholder,
@@ -3648,7 +3902,7 @@ var RichtextEditor = ({
       onChange,
       theme,
       style,
-      children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarChain, __spreadValues({}, toolbar))
+      children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(ToolbarChain, __spreadValues({}, toolbar))
     }
   );
 };

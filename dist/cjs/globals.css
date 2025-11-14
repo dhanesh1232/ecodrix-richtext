@@ -21,6 +21,7 @@
     --color-black: #000;
     --color-white: #fff;
     --spacing: 0.25rem;
+    --container-md: 28rem;
     --container-lg: 32rem;
     --container-4xl: 56rem;
     --text-xs: 0.75rem;
@@ -217,9 +218,6 @@
   .collapse {
     visibility: collapse;
   }
-  .invisible {
-    visibility: hidden;
-  }
   .visible {
     visibility: visible;
   }
@@ -338,6 +336,9 @@
   }
   .mx-auto {
     margin-inline: auto;
+  }
+  .my-0 {
+    margin-block: calc(var(--spacing) * 0);
   }
   .my-1 {
     margin-block: calc(var(--spacing) * 1);
@@ -746,6 +747,13 @@
       margin-block-end: calc(calc(var(--spacing) * 1) * calc(1 - var(--tw-space-y-reverse)));
     }
   }
+  .space-y-2 {
+    :where(& > :not(:last-child)) {
+      --tw-space-y-reverse: 0;
+      margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));
+      margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));
+    }
+  }
   .space-y-3 {
     :where(& > :not(:last-child)) {
       --tw-space-y-reverse: 0;
@@ -921,12 +929,6 @@
   .bg-background {
     background-color: var(--background);
   }
-  .bg-background\/80 {
-    background-color: var(--background);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--background) 80%, transparent);
-    }
-  }
   .bg-background\/95 {
     background-color: var(--background);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1067,6 +1069,9 @@
   .p-px {
     padding: 1px;
   }
+  .px-0 {
+    padding-inline: calc(var(--spacing) * 0);
+  }
   .px-1 {
     padding-inline: calc(var(--spacing) * 1);
   }
@@ -1087,6 +1092,9 @@
   }
   .px-6 {
     padding-inline: calc(var(--spacing) * 6);
+  }
+  .py-0 {
+    padding-block: calc(var(--spacing) * 0);
   }
   .py-1 {
     padding-block: calc(var(--spacing) * 1);
@@ -1433,9 +1441,6 @@
   }
   .\[animation-delay\:-0\.15s\] {
     animation-delay: -0.15s;
-  }
-  .fade-in {
-    --tw-enter-opacity: 0;
   }
   .group-hover\:scale-105 {
     &:is(:where(.group):hover *) {
@@ -2367,14 +2372,14 @@
       }
     }
   }
-  .sm\:max-w-\[700px\] {
-    @media (width >= 40rem) {
-      max-width: 700px;
-    }
-  }
   .sm\:max-w-lg {
     @media (width >= 40rem) {
       max-width: var(--container-lg);
+    }
+  }
+  .sm\:max-w-md {
+    @media (width >= 40rem) {
+      max-width: var(--container-md);
     }
   }
   .sm\:grid-cols-4 {

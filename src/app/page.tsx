@@ -15,7 +15,10 @@ export default function Page() {
           placeholder="Write something...."
           initialContent={value}
           toolbar={{
-            mediaUrl: true,
+            image: {
+              isMultiple: true,
+              modal: true,
+            },
             format: {
               heading: [1, 2, 3, 4, 5, 6],
               paragraph: true,

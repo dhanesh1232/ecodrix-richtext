@@ -66,6 +66,10 @@ export class EditorCore {
         --editor-blockquote-border: #3b82f6;
         --editor-hr: #d1d5db;
         --tbl-highlight: #3b82f6;
+
+        --scroll-thumb: color-mix(in srgb, var(--editor-fg) 40%, transparent 60%);
+        --scroll-thumb-hover: color-mix(in srgb, var(--editor-fg) 55%, transparent 45%);
+        --scroll-track: color-mix(in srgb, var(--editor-bg) 85%, transparent 15%);
       }
 
       [data-theme="dark"] {
@@ -77,100 +81,70 @@ export class EditorCore {
         --editor-code-bg: #111827;
         --editor-blockquote-border: #60a5fa;
         --editor-hr: #374151;
+
+        --scroll-thumb: color-mix(in srgb, #ffffff 40%, transparent 60%);
+        --scroll-thumb-hover: color-mix(in srgb, #ffffff 55%, transparent 45%);
       }
 
       html, body {
         height: 100%;
+        width: 100%;
         margin: 0;
         padding: 0;
         box-sizing: border-box;
-        overflow-y: auto;
-        cursor: text;
         background: var(--editor-bg);
         color: var(--editor-fg);
         font-family: system-ui, -apple-system, sans-serif;
         line-height: 1.6;
-        transition: background-color 0.25s ease, color 0.25s ease;
+        cursor: text;
+        transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
+
+        /* --- Default: NO scroll, no scrollbar --- */
+        overflow-y: hidden;
+        scrollbar-width: none; /* Firefox */
       }
 
-      body {
-        padding: 0.75rem;
-      }
-      
-      
-      /* -----------------------------------------------------
-        PREMIUM EDITOR SCROLL EXPERIENCE
-        Inspired by Linear + macOS floating overlays
-      ------------------------------------------------------ */
-
-      /* Base variables (auto-adapt to light/dark) */
-      * {
-        --scroll-thumb: color-mix(in srgb, var(--editor-fg) 40%, transparent 60%);
-        --scroll-thumb-hover: color-mix(in srgb, var(--editor-fg) 55%, transparent 45%);
-        --scroll-track: color-mix(in srgb, var(--editor-bg) 85%, transparent 15%);
+      /* Hide scrollbar (WebKit) by default */
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar {
+        width: 0px;
+        height: 0px;
       }
 
-      /* Firefox support */
-      * {
+      /* ---------------------------------------------------------
+         ON FOCUS — enable scroll + premium scrollbar
+      --------------------------------------------------------- */
+      html:focus-within,
+      body:focus-within {
+        overflow-y: auto !important;
         scrollbar-width: thin;
-        scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+        scrollbar-color: var(--scroll-thumb) transparent;
       }
 
-      /* WebKit scrollbars */
-      *::-webkit-scrollbar {
+      html:focus-within::-webkit-scrollbar,
+      body:focus-within::-webkit-scrollbar {
         width: 8px;
         height: 8px;
-        background: transparent;
       }
 
-      /* Floating, softened track */
-      *::-webkit-scrollbar-track {
-        background: transparent; /* invisible track */
-      }
-
-      /* Floating thumb */
-      *::-webkit-scrollbar-thumb {
+      html:focus-within::-webkit-scrollbar-thumb,
+      body:focus-within::-webkit-scrollbar-thumb {
         background: var(--scroll-thumb);
         border-radius: 999px;
-        opacity: 0;
-        transition: opacity 0.25s ease, background-color 0.25s ease;
+        opacity: 0.8;
+        transition: opacity 0.25s ease;
       }
 
-      /* Hover → thumb brightens */
-      *::-webkit-scrollbar-thumb:hover {
+      html:focus-within::-webkit-scrollbar-thumb:hover,
+      body:focus-within::-webkit-scrollbar-thumb:hover {
         background: var(--scroll-thumb-hover);
       }
 
-      /* Only show thumb while scrolling or hovering */
-      html:hover::-webkit-scrollbar-thumb,
-      body:hover::-webkit-scrollbar-thumb {
-        opacity: 1;
-      }
-
-      /* Smooth fade-in on scroll */
-      ::-webkit-scrollbar-thumb {
-        animation: fadeOutScrollbar 1.5s forwards;
-      }
-
-      @keyframes fadeOutScrollbar {
-        0% {
-          opacity: 1;
-        }
-        100% {
-          opacity: 0;
-        }
-      }
-
-      /* Fix corner on both axes */
-      *::-webkit-scrollbar-corner {
-        background: transparent;
-      }
-
-      *, *::before, *::after {
-        box-sizing: inherit;
-      }
-
+      /* ---------------------------------------------------------
+         Editor basics
+      --------------------------------------------------------- */
       body {
+        padding: 0.75rem;
         display: flex;
         flex-direction: column;
         caret-color: var(--editor-accent);
@@ -178,6 +152,10 @@ export class EditorCore {
 
       [contenteditable]:focus {
         outline: none;
+      }
+
+      *, *::before, *::after {
+        box-sizing: inherit;
       }
 
       p, div, h1, h2, h3, h4, h5, h6, pre, blockquote, table, li {
@@ -224,6 +202,9 @@ export class EditorCore {
         padding: 6px;
       }
 
+      /* ---------------------------------------------------------
+         Placeholder
+      --------------------------------------------------------- */
       body.empty::before {
         content: attr(data-placeholder);
         color: var(--editor-placeholder);
@@ -234,47 +215,44 @@ export class EditorCore {
         opacity: 0.6;
       }
 
-      html, body {
-        transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
-      }
-      
-      /* Highlight LEFT edge */
-      .editor-table-wrapper.handle-left-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-        clip-path: inset(0 calc(100% - 2px) 0 0);
-      }
-
-      /* Highlight RIGHT edge */
-      .editor-table-wrapper.handle-right-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-        clip-path: inset(0 0 0 calc(100% - 2px));
+      /* ---------------------------------------------------------
+         Default image styling (rectangular crop)
+      --------------------------------------------------------- */
+      /* Responsive, full-image display inside the editor */
+      body img {
+        display: block;
+        width: 100% !important;
+        height: auto !important;         /* prevents cropping */
+        object-fit: contain !important;  /* show complete image */
+        border-radius: 4px;
+        margin: 0.75rem 0;
+        max-height: 65vh;                /* prevents overly tall images */
       }
 
-      /* Highlight TOP edge */
-      .editor-table-wrapper.handle-top-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-        clip-path: inset(calc(100% - 2px) 0 0 0);
+      /* Tablet & Desktop – rectangular feel without cutting image */
+      @media (min-width: 768px) {
+        body img {
+          max-height: 420px;
+        }
       }
 
-      /* Highlight BOTTOM edge */
-      .editor-table-wrapper.handle-bottom-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-        clip-path: inset(0 0 calc(100% - 2px) 0);
+      /* Large screens */
+      @media (min-width: 1200px) {
+        body img {
+          max-height: 520px;
+        }
       }
 
-      /* Highlight corners (full frame) */
-      .editor-table-wrapper.handle-corner-hover table {
-        outline: 2px solid var(--tbl-highlight);
-        outline-offset: -2px;
-      }
-
-      /* Highlight full table border when a handle is hovered */
+      /* ---------------------------------------------------------
+         Table Resize Highlight
+      --------------------------------------------------------- */
+      .editor-table-wrapper.handle-left-hover table,
+      .editor-table-wrapper.handle-right-hover table,
+      .editor-table-wrapper.handle-top-hover table,
+      .editor-table-wrapper.handle-bottom-hover table,
+      .editor-table-wrapper.handle-corner-hover table,
       .editor-table-wrapper.table-active-border table {
-        outline: 2px solid #3b82f6;
+        outline: 2px solid var(--tbl-highlight);
         outline-offset: -2px;
       }
 
@@ -283,6 +261,7 @@ export class EditorCore {
       }
     </style>
   </head>
+
   <body contenteditable="true" data-placeholder="${this.placeholder}" data-empty="true"></body>
 </html>
 `;

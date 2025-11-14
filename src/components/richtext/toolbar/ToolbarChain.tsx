@@ -20,43 +20,29 @@ import { IndentOutdentSection } from "../ui/indent-outdent";
 import { TextAlignerSection } from "../ui/text-aligner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AnchorLink } from "../ui/link-insert";
-import { ImagePicker } from "../ui/image-modal";
+import { ImagePickerBlock } from "../ui/image-picker";
 
-export const ToolbarChain: React.FC<ToolbarChainProps> = ({ format }) => {
+export const ToolbarChain: React.FC<ToolbarChainProps> = ({
+  format,
+  image,
+}) => {
   const { iframeRef, ctx } = useEditor();
   const [chain, setChain] = React.useState<EditorChain | null>(null);
-  const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
-    setMounted(true);
-
     const initChain = () => {
       if (iframeRef.current?.contentWindow && !chain) {
         setChain(new EditorChain(iframeRef.current.contentWindow));
       }
     };
-
     // Try immediately, then set up interval
     initChain();
     const timer = setInterval(initChain, 300);
 
     return () => {
       clearInterval(timer);
-      setMounted(false);
     };
   }, [iframeRef, chain]);
-
-  if (!mounted) {
-    return (
-      <ToolbarWrapper className="flex flex-nowrap gap-2 border-b py-2 px-3 bg-background/80 backdrop-blur-xs">
-        <div className="flex items-center gap-1 animate-pulse">
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className="h-8 w-8 bg-muted rounded-md" />
-          ))}
-        </div>
-      </ToolbarWrapper>
-    );
-  }
 
   return (
     <ThemeProvider
@@ -73,6 +59,13 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({ format }) => {
         <ToolbarButtonSeparator />
 
         <ToolbarGroup>
+          <ToolbarButton
+            toolButtonSize="xs"
+            tooltip="AI Enhance"
+            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
+          >
+            <Sparkles className="w-4 h-4" />
+          </ToolbarButton>
           <TextFormatSection ctx={ctx} size="xs" format={format} />
         </ToolbarGroup>
 
@@ -87,11 +80,6 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({ format }) => {
         <ToolbarGroup>
           <ListSelectorSection ctx={ctx} size="xs" />
           <IndentOutdentSection size="xs" ctx={ctx} />
-        </ToolbarGroup>
-
-        <ToolbarButtonSeparator />
-
-        <ToolbarGroup>
           <TextAlignerSection ctx={ctx} size="xs" />
         </ToolbarGroup>
 
@@ -99,7 +87,7 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({ format }) => {
 
         <ToolbarGroup>
           <AnchorLink size="xs" ctx={ctx} />
-          <ImagePicker />
+          <ImagePickerBlock {...image} />
           <TablePicker
             variant="ghost"
             size="icon-xs"
@@ -122,13 +110,6 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({ format }) => {
         <ToolbarButtonSeparator />
 
         <ToolbarGroup>
-          <ToolbarButton
-            toolButtonSize="xs"
-            tooltip="AI Enhance"
-            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
-          >
-            <Sparkles className="w-4 h-4" />
-          </ToolbarButton>
           <ToolbarButton
             toolButtonSize="xs"
             tooltip="Clear Formatting"

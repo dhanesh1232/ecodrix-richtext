@@ -20,6 +20,22 @@ export class EditorChain {
     this.queue = [];
   }
 
+  insertImage(url: string, alt: string = "") {
+    const html = `<img src="${url}" alt="${alt.replace(/"/g, "&quot;")}" />`;
+    return this.insertHTML(html);
+  }
+
+  insertImages(images: Array<{ url: string; alt?: string }>) {
+    let html = "";
+    for (const img of images) {
+      html += `<img src="${img.url}" alt="${(img.alt || "").replace(
+        /"/g,
+        "&quot;"
+      )}" />`;
+    }
+    return this.insertHTML(html);
+  }
+
   // Inline commands
   exec(cmd: string, value?: string) {
     return this.post({ type: "EXEC", cmd, value });

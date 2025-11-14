@@ -31,7 +31,7 @@ export const TablePicker = React.forwardRef<
           ref={ref}
           toolButtonSize="xs"
           tooltip="Insert Table"
-          data-active={open}
+          active={open}
           {...buttonProps}
         >
           <Table />

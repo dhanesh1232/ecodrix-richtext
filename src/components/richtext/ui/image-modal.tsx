@@ -9,14 +9,10 @@ import {
   DialogTrigger,
   Button,
   Skeleton,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from "@/components/ui";
 import {
   Upload,
   ImagePlus,
-  X,
   Check,
   Loader2,
   Search,
@@ -25,35 +21,45 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ToolbarButton } from "../toolbar/toolbar";
+import Image from "next/image";
 
-interface ImagePickerProps {
-  onChange?: (url: string) => void;
-  selected?: string;
+type ImageFormat = {
+  url: string;
+  alt: string;
+};
+interface ImageModalProps {
+  onInsert?: (url: ImageFormat[]) => void;
+  selected?: ImageFormat;
   aspectRatio?: "square" | "portrait" | "landscape" | "free";
   maxSize?: number;
   multiple?: boolean;
+  open?: boolean;
+  setOpen?: (value: boolean) => void;
 }
 
-export const ImagePicker: React.FC<ImagePickerProps> = ({
-  onChange,
+export const ImageModal: React.FC<ImageModalProps> = ({
+  onInsert,
   selected,
   maxSize = 5,
   multiple = true,
+  open,
+  setOpen,
 }) => {
-  const [open, setOpen] = React.useState(false);
   const [isUploading, setIsUploading] = React.useState(false);
-  const [images, setImages] = React.useState<string[]>([]);
+  const [images, setImages] = React.useState<ImageFormat[]>([]);
   const [loadingImages, setLoadingImages] = React.useState(true);
   const [uploadProgress, setUploadProgress] = React.useState(0);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [viewMode, setViewMode] = React.useState<"grid" | "list">("grid");
   const [dragActive, setDragActive] = React.useState(false);
-  const [selectedImages, setSelectedImage] = React.useState<string[]>(
+  const [selectedImages, setSelectedImage] = React.useState<ImageFormat[]>(
     selected ? [selected] : []
   );
 
-  const filteredImages = images.filter((img) =>
-    img.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredImages = images.filter(
+    (img) =>
+      img.url.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      img.alt.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   /** Simulated backend fetch */
@@ -61,14 +67,38 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
     setLoadingImages(true);
     setTimeout(() => {
       setImages([
-        "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?w=400&h=600&fit=crop",
-        "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop",
-        "https://images.unsplash.com/photo-1492633423870-43d1cd2775eb?w=400&h=600&fit=crop",
-        "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&h=400&fit=crop",
+        {
+          url: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop",
+          alt: "First Image",
+        },
+        {
+          url: "https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?w=400&h=600&fit=crop",
+          alt: "Second Image",
+        },
+        {
+          url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop",
+          alt: "Third Image",
+        },
+        {
+          url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop",
+          alt: "Fourth Image",
+        },
+        {
+          url: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&h=400&fit=crop",
+          alt: "Fifth Image",
+        },
+        {
+          url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop",
+          alt: "Sixth Image",
+        },
+        {
+          url: "https://images.unsplash.com/photo-1492633423870-43d1cd2775eb?w=400&h=600&fit=crop",
+          alt: "Seventh Image",
+        },
+        {
+          url: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&h=400&fit=crop",
+          alt: "Eight Image",
+        },
       ]);
       setLoadingImages(false);
     }, 1000);
@@ -100,8 +130,12 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
     reader.onload = () => {
       setTimeout(() => {
         const result = reader.result as string;
+        const image = {
+          url: result,
+          alt: result,
+        };
 
-        onChange?.(result);
+        setSelectedImage?.((prev) => [...prev, image]);
         setIsUploading(false);
         setUploadProgress(100);
         clearInterval(progress);
@@ -119,11 +153,11 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
   };
 
   /** 🖱️ Choose from existing images */
-  const handleSelectImage = (url: string) => {
+  const handleSelectImage = (url: ImageFormat) => {
     if (multiple) {
       setSelectedImage((prev) =>
         prev.includes(url)
-          ? prev.filter((item) => item !== url)
+          ? prev.filter((item) => item.url !== url.url)
           : [...prev, url]
       );
     } else {
@@ -144,8 +178,8 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
     }
   };
 
-  const isSelected = (src: string) => {
-    return selectedImages.find((i) => i === src);
+  const isSelected = (src: ImageFormat) => {
+    return selectedImages.find((i) => i?.url === src?.url);
   };
 
   return (
@@ -162,7 +196,7 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
           </ToolbarButton>
         </DialogTrigger>
 
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh] p-0 overflow-hidden rounded-md shadow-2xl flex flex-col">
+        <DialogContent className="sm:max-w-md max-h-[80vh] p-0 overflow-hidden rounded-md shadow-2xl flex flex-col">
           {/* Header */}
           <DialogHeader className="p-4 border-b border-border/50 sticky top-0 bg-background z-0">
             <DialogTitle className="text-lg font-semibold">
@@ -320,8 +354,11 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
                             "rounded-md"
                           )}
                         >
-                          <img
-                            src={src}
+                          <Image
+                            width={100}
+                            height={100}
+                            loading="lazy"
+                            src={src.url}
                             alt={`Media ${i}`}
                             className="object-cover w-full h-full group-hover:scale-105 ease-in-out duration-150 transform transition-transform"
                           />
@@ -342,7 +379,7 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
                               Image {i + 1}
                             </p>
                             <p className="text-xs text-muted-foreground truncate">
-                              {src.split("/").pop()}
+                              {src.url.split("/").pop()}
                             </p>
                           </div>
                         )}
@@ -373,7 +410,7 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setOpen(false)}
+                onClick={() => setOpen?.(!open)}
               >
                 Cancel
               </Button>
@@ -381,7 +418,10 @@ export const ImagePicker: React.FC<ImagePickerProps> = ({
                 size="sm"
                 variant="primary"
                 disabled={!selectedImages.length || isUploading}
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  onInsert?.(selectedImages);
+                  setOpen?.(!open);
+                }}
                 className="gap-2"
               >
                 {isUploading ? (
