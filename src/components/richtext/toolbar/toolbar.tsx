@@ -302,7 +302,7 @@ export const ToolbarButton = React.forwardRef<
       setIsPressed(false);
     };
 
-    const handleClick = (e: React.MouseEvent) => {
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       setIsPressed(false);
       onClick?.(e);
     };

@@ -645,17 +645,6 @@ function editorRuntimeInit() {
       }
     }
   });
-  document.body.addEventListener(
-    "blur",
-    () => {
-      try {
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
-      } catch (e) {
-      }
-    },
-    true
-  );
   window.addEventListener("error", (err) => {
     parent.postMessage({ type: "IFRAME_ERROR", message: err.message }, "*");
   });
@@ -762,7 +751,7 @@ var EditorCore = class {
         background: var(--editor-bg);
         color: var(--editor-fg);
         font-family: system-ui, -apple-system, sans-serif;
-        line-height: 1.6;
+        line-height: 1.4;
         cursor: text;
         transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
 
@@ -830,7 +819,7 @@ var EditorCore = class {
       }
 
       p, h1, h2, h3, h4, h5, h6, pre, blockquote {
-        margin: 0 0 0.8em;
+        margin: 0 0 0.6em;
       }
 
       a {
@@ -889,16 +878,19 @@ var EditorCore = class {
       body img {
         display: block;
         width: 100% !important;
-        height: auto !important;         /* prevents cropping */
-        object-fit: contain !important;  /* show complete image */
-        border-radius: 4px;
+        height: 100% !important;
+        object-fit: contain !important;
+        object-position: center;
         margin: 0.75rem 0;
-        max-height: 65vh;                /* prevents overly tall images */
+        border-radius: 4px;
+        max-height: 480px;
       }
+
 
       /* Tablet & Desktop \u2013 rectangular feel without cutting image */
       @media (min-width: 768px) {
         body img {
+          min-height: 370px;
           max-height: 420px;
         }
       }
@@ -906,6 +898,7 @@ var EditorCore = class {
       /* Large screens */
       @media (min-width: 1200px) {
         body img {
+
           max-height: 520px;
         }
       }
@@ -948,12 +941,7 @@ var EditorCore = class {
       this.emit("ready", "");
     };
     window.addEventListener("message", this.handleMessage);
-    const ensureSetHTML = setInterval(() => {
-      if (this.isReady && this.win) {
-        this.post("SET_HTML", { html: this.html });
-        clearInterval(ensureSetHTML);
-      }
-    }, 150);
+    this.post("SET_HTML", { html: this.html });
   }
   /**
    * 📨 Sends a command or message to the iframe runtime.
@@ -1057,6 +1045,9 @@ var EditorCore = class {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     this.autoThemeListener = mql;
     console.log(mql);
+    if (!this.autoThemeListener) {
+      mql.addEventListener("change", this.autoThemeHandler);
+    }
     this.setTheme(mql.matches ? "dark" : "light");
     mql.addEventListener("change", this.autoThemeHandler);
   }
@@ -1125,7 +1116,8 @@ var EditorProvider = ({
   onChange,
   placeholder,
   style,
-  theme
+  theme,
+  className
 }) => {
   var _a, _b, _c, _d, _e;
   const iframeRef = React.useRef(null);
@@ -1134,8 +1126,14 @@ var EditorProvider = ({
   const [html, setHtml] = React.useState(initialContent);
   const [json, setJson] = React.useState([]);
   const [isFocused, setIsFocused] = React.useState(false);
+  const stableOnChange = React.useRef(onChange);
+  const ignoreBlurRef = React.useRef(false);
+  React.useEffect(() => {
+    stableOnChange.current = onChange;
+  }, [onChange]);
   React.useEffect(() => {
     if (!iframeRef.current) return;
+    if (core) return;
     const editor = new EditorCore(
       iframeRef.current,
       initialContent,
@@ -1144,9 +1142,10 @@ var EditorProvider = ({
     editor.init();
     setCore(editor);
     editor.on("update", () => {
+      var _a2;
       setHtml(editor.toHTML());
       setJson(editor.toJSON());
-      onChange == null ? void 0 : onChange(editor);
+      (_a2 = stableOnChange.current) == null ? void 0 : _a2.call(stableOnChange, editor);
     });
     editor.on("context", (data) => {
       setCtx((prev) => __spreadValues(__spreadValues({}, prev), data));
@@ -1165,7 +1164,12 @@ var EditorProvider = ({
       }));
     });
     return () => editor.destroy();
-  }, [iframeRef, onChange, initialContent]);
+  }, []);
+  React.useEffect(() => {
+    if (core && initialContent !== void 0) {
+      core.fromHTML(initialContent);
+    }
+  }, [initialContent]);
   React.useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -1206,7 +1210,10 @@ var EditorProvider = ({
     const doc = iframe.contentDocument;
     if (!doc) return;
     const handleFocus = () => setIsFocused(true);
-    const handleBlur = () => setIsFocused(false);
+    const handleBlur = () => {
+      if (ignoreBlurRef.current) return;
+      setIsFocused(false);
+    };
     const interval = setInterval(() => {
       const body = doc.body;
       if (body) {
@@ -1287,9 +1294,10 @@ var EditorProvider = ({
         html,
         json,
         iframeRef,
-        refreshCtx
+        refreshCtx: () => {
+        }
       },
-      children: /* @__PURE__ */ jsxs(
+      children: /* @__PURE__ */ jsx(
         "div",
         {
           "data-focused": isFocused,
@@ -1297,9 +1305,15 @@ var EditorProvider = ({
             height: typeof (style == null ? void 0 : style.height) === "string" ? style == null ? void 0 : style.height : `${style == null ? void 0 : style.height}px`,
             borderWidth: `${borderWidth}px`
           },
-          className: cn(containerClass, "overflow-hidden"),
-          children: [
-            children,
+          className: cn(
+            containerClass,
+            "w-full max-w-full overflow-hidden",
+            className
+          ),
+          onMouseEnter: () => ignoreBlurRef.current = true,
+          onMouseLeave: () => ignoreBlurRef.current = false,
+          children: /* @__PURE__ */ jsxs("div", { className: "flex flex-col w-full h-full overflow-hidden", children: [
+            /* @__PURE__ */ jsx("div", { className: "shrink-0 w-full", children }),
             /* @__PURE__ */ jsx(
               "iframe",
               {
@@ -1315,11 +1329,11 @@ var EditorProvider = ({
                     return "calc(100% - 42px)";
                   })()
                 },
-                className: "w-full border-0 rounded-b bg-background cursor-text focus:cursor-text p-0",
+                className: "\n              flex-1\n              block\n              w-full\n              border-0\n              bg-background\n              rounded-b\n              min-h-0\n            ",
                 sandbox: "allow-same-origin allow-scripts allow-forms allow-popups"
               }
             )
-          ]
+          ] })
         }
       )
     }
@@ -3741,10 +3755,11 @@ var ImagePickerBlock = ({
 };
 
 // src/components/richtext/toolbar/ToolbarChain.tsx
-import { jsx as jsx26, jsxs as jsxs18 } from "react/jsx-runtime";
+import { Fragment as Fragment4, jsx as jsx26, jsxs as jsxs18 } from "react/jsx-runtime";
 var ToolbarChain = ({
   format,
-  image
+  image,
+  aiEnhance = false
 }) => {
   const { iframeRef, ctx } = useEditor();
   const [chain, setChain] = React14.useState(null);
@@ -3772,7 +3787,7 @@ var ToolbarChain = ({
         /* @__PURE__ */ jsx26(ToolbarGroup, { children: /* @__PURE__ */ jsx26(HistorySection, { ctx, size: "xs" }) }),
         /* @__PURE__ */ jsx26(ToolbarButtonSeparator, {}),
         /* @__PURE__ */ jsxs18(ToolbarGroup, { children: [
-          /* @__PURE__ */ jsx26(
+          aiEnhance && /* @__PURE__ */ jsx26(Fragment4, { children: /* @__PURE__ */ jsx26(
             ToolbarButton,
             {
               toolButtonSize: "xs",
@@ -3780,7 +3795,7 @@ var ToolbarChain = ({
               className: "bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0",
               children: /* @__PURE__ */ jsx26(Sparkles, { className: "w-4 h-4" })
             }
-          ),
+          ) }),
           /* @__PURE__ */ jsx26(TextFormatSection, { ctx, size: "xs", format })
         ] }),
         /* @__PURE__ */ jsx26(ToolbarButtonSeparator, {}),
@@ -3857,7 +3872,8 @@ var RichtextEditor = ({
       radius: "md"
     },
     shadow: "md"
-  }
+  },
+  className
 }) => {
   const [isMount, setIsMount] = React15.useState(false);
   React15.useEffect(() => {
@@ -3871,6 +3887,14 @@ var RichtextEditor = ({
       window.removeEventListener("load", handleLoad);
     };
   }, []);
+  const handleToChangeValue = React15.useCallback(
+    (value) => {
+      if (value) {
+        onChange == null ? void 0 : onChange(value);
+      }
+    },
+    [onChange]
+  );
   if (!isMount) {
     switch (loader) {
       case "shine":
@@ -3888,9 +3912,10 @@ var RichtextEditor = ({
     {
       placeholder,
       initialContent,
-      onChange,
+      onChange: handleToChangeValue,
       theme,
       style,
+      className,
       children: /* @__PURE__ */ jsx27(ToolbarChain, __spreadValues({}, toolbar))
     }
   );

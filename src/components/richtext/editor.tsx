@@ -14,6 +14,8 @@ interface RichtextEditorProps {
   loader?: EditorLoader;
   toolbar?: ToolbarChainProps;
   style?: DesignProps;
+  className?: string;
+  aiEnhance?: boolean;
 }
 
 export const RichtextEditor: React.FC<RichtextEditorProps> = ({
@@ -31,6 +33,7 @@ export const RichtextEditor: React.FC<RichtextEditorProps> = ({
     },
     shadow: "md",
   },
+  className,
 }) => {
   const [isMount, setIsMount] = React.useState(false);
 
@@ -45,6 +48,15 @@ export const RichtextEditor: React.FC<RichtextEditorProps> = ({
       window.removeEventListener("load", handleLoad);
     };
   }, []);
+
+  const handleToChangeValue = React.useCallback(
+    (value: EditorCore) => {
+      if (value) {
+        onChange?.(value);
+      }
+    },
+    [onChange]
+  );
 
   if (!isMount) {
     switch (loader) {
@@ -63,9 +75,10 @@ export const RichtextEditor: React.FC<RichtextEditorProps> = ({
     <EditorProvider
       placeholder={placeholder}
       initialContent={initialContent}
-      onChange={onChange}
+      onChange={handleToChangeValue}
       theme={theme}
       style={style}
+      className={className}
     >
       <ToolbarChain {...toolbar} />
     </EditorProvider>

@@ -89,6 +89,7 @@ declare global {
   interface ToolbarChainProps {
     format?: Format;
     isUrl?: boolean;
+    aiEnhance?: boolean;
     image?: {
       modal?: boolean;
       isMultiple?: boolean;

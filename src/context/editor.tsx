@@ -57,6 +57,7 @@ export interface EditorProviderProps {
   placeholder?: string;
   theme?: "light" | "dark" | Record<string, string>;
   style?: DesignProps;
+  className?: string;
 }
 
 export const EditorProvider: React.FC<EditorProviderProps> = ({
@@ -66,6 +67,7 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
   placeholder,
   style,
   theme,
+  className,
 }) => {
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
 
@@ -74,9 +76,16 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
   const [html, setHtml] = React.useState(initialContent);
   const [json, setJson] = React.useState<object[]>([]);
   const [isFocused, setIsFocused] = React.useState(false);
+  const stableOnChange = React.useRef(onChange);
+  const ignoreBlurRef = React.useRef(false);
+
+  React.useEffect(() => {
+    stableOnChange.current = onChange;
+  }, [onChange]);
 
   React.useEffect(() => {
     if (!iframeRef.current) return;
+    if (core) return; // <-- prevents reinitializing editor
 
     const editor = new EditorCore(
       iframeRef.current,
@@ -92,7 +101,7 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
       setHtml(editor.toHTML());
       setJson(editor.toJSON());
       // 🚀 Fire external onChange callback
-      onChange?.(editor);
+      stableOnChange.current?.(editor);
     });
 
     // 🧠 Watch for context (bold, italics, etc.)
@@ -117,7 +126,14 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
       }));
     });
     return () => editor.destroy();
-  }, [iframeRef, onChange, initialContent]);
+  }, []);
+
+  // Update initial content safely
+  React.useEffect(() => {
+    if (core && initialContent !== undefined) {
+      core.fromHTML(initialContent);
+    }
+  }, [initialContent]);
 
   React.useEffect(() => {
     const iframe = iframeRef.current;
@@ -170,7 +186,10 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
     if (!doc) return;
 
     const handleFocus = () => setIsFocused(true);
-    const handleBlur = () => setIsFocused(false);
+    const handleBlur = () => {
+      if (ignoreBlurRef.current) return;
+      setIsFocused(false);
+    };
 
     const interval = setInterval(() => {
       const body = doc.body;
@@ -259,7 +278,7 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
         html,
         json,
         iframeRef: iframeRef as React.RefObject<HTMLIFrameElement>,
-        refreshCtx,
+        refreshCtx: () => {},
       }}
     >
       <div
@@ -271,29 +290,45 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({
               : `${style?.height}px`,
           borderWidth: `${borderWidth}px`,
         }}
-        className={cn(containerClass, "overflow-hidden")}
+        className={cn(
+          containerClass,
+          "w-full max-w-full overflow-hidden",
+          className
+        )}
+        onMouseEnter={() => (ignoreBlurRef.current = true)}
+        onMouseLeave={() => (ignoreBlurRef.current = false)}
       >
-        {children}
-        <iframe
-          ref={iframeRef}
-          style={{
-            height: (() => {
-              const h = style?.height;
-              if (typeof h === "string") {
-                // Case 1: percentage → use CSS calc
-                if (h.includes("%")) return `calc(${h} - 42px)`;
-                // Case 2: pixel string → subtract numerically
-                if (h.includes("px")) return `${parseFloat(h) - 42}px`;
-              }
-              // Case 3: numeric value
-              if (typeof h === "number") return `${h - 42}px`;
-              // Default fallback
-              return "calc(100% - 42px)";
-            })(),
-          }}
-          className="w-full border-0 rounded-b bg-background cursor-text focus:cursor-text p-0"
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-        />
+        {/* FLEX CONTAINER FOR TOOLBAR + IFRAME */}
+        <div className="flex flex-col w-full h-full overflow-hidden">
+          {/* Toolbar */}
+          <div className="shrink-0 w-full">{children}</div>
+
+          {/* Iframe */}
+          <iframe
+            ref={iframeRef}
+            style={{
+              height: (() => {
+                const h = style?.height;
+                if (typeof h === "string") {
+                  if (h.includes("%")) return `calc(${h} - 42px)`;
+                  if (h.includes("px")) return `${parseFloat(h) - 42}px`;
+                }
+                if (typeof h === "number") return `${h - 42}px`;
+                return "calc(100% - 42px)";
+              })(),
+            }}
+            className="
+              flex-1
+              block
+              w-full
+              border-0
+              bg-background
+              rounded-b
+              min-h-0
+            "
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+          />
+        </div>
       </div>
     </EditorContext.Provider>
   );

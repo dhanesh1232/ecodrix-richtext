@@ -802,18 +802,6 @@ export function editorRuntimeInit() {
     }
   });
 
-  // -------- AUTO-SCROLL TO TOP ON UNFOCUS ----------
-  document.body.addEventListener(
-    "blur",
-    () => {
-      try {
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
-      } catch {}
-    },
-    true
-  );
-
   window.addEventListener("error", (err) => {
     parent.postMessage({ type: "IFRAME_ERROR", message: err.message }, "*");
   });

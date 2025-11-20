@@ -95,7 +95,7 @@ export class EditorCore {
         background: var(--editor-bg);
         color: var(--editor-fg);
         font-family: system-ui, -apple-system, sans-serif;
-        line-height: 1.6;
+        line-height: 1.4;
         cursor: text;
         transition: background-color 0.25s ease, color 0.25s ease, caret-color 0.25s ease;
 
@@ -163,7 +163,7 @@ export class EditorCore {
       }
 
       p, h1, h2, h3, h4, h5, h6, pre, blockquote {
-        margin: 0 0 0.8em;
+        margin: 0 0 0.6em;
       }
 
       a {
@@ -222,16 +222,19 @@ export class EditorCore {
       body img {
         display: block;
         width: 100% !important;
-        height: auto !important;         /* prevents cropping */
-        object-fit: contain !important;  /* show complete image */
-        border-radius: 4px;
+        height: 100% !important;
+        object-fit: contain !important;
+        object-position: center;
         margin: 0.75rem 0;
-        max-height: 65vh;                /* prevents overly tall images */
+        border-radius: 4px;
+        max-height: 480px;
       }
+
 
       /* Tablet & Desktop – rectangular feel without cutting image */
       @media (min-width: 768px) {
         body img {
+          min-height: 370px;
           max-height: 420px;
         }
       }
@@ -239,6 +242,7 @@ export class EditorCore {
       /* Large screens */
       @media (min-width: 1200px) {
         body img {
+
           max-height: 520px;
         }
       }
@@ -286,12 +290,7 @@ export class EditorCore {
 
     window.addEventListener("message", this.handleMessage);
 
-    const ensureSetHTML = setInterval(() => {
-      if (this.isReady && this.win) {
-        this.post("SET_HTML", { html: this.html });
-        clearInterval(ensureSetHTML);
-      }
-    }, 150);
+    this.post("SET_HTML", { html: this.html });
   }
 
   /**
@@ -452,6 +451,9 @@ export class EditorCore {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     this.autoThemeListener = mql;
     console.log(mql);
+    if (!this.autoThemeListener) {
+      mql.addEventListener("change", this.autoThemeHandler);
+    }
     // Initial apply
     this.setTheme(mql.matches ? "dark" : "light");
 
