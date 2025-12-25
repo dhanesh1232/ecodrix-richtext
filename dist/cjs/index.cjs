@@ -3770,7 +3770,8 @@ var import_jsx_runtime26 = require("react/jsx-runtime");
 var ToolbarChain = ({
   format,
   image,
-  aiEnhance = false
+  aiEnhance = false,
+  clear = false
 }) => {
   const { iframeRef, ctx } = useEditor();
   const [chain, setChain] = React14.useState(null);
@@ -3803,7 +3804,7 @@ var ToolbarChain = ({
             {
               toolButtonSize: "xs",
               tooltip: "AI Enhance",
-              className: "bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0",
+              className: "bg-linear-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0",
               children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(import_lucide_react14.Sparkles, { className: "w-4 h-4" })
             }
           ) }),
@@ -3849,7 +3850,7 @@ var ToolbarChain = ({
           )
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarButtonSeparator, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
+        clear && /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(ToolbarGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
           ToolbarButton,
           {
             toolButtonSize: "xs",

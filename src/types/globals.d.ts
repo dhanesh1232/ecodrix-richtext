@@ -94,6 +94,7 @@ declare global {
       modal?: boolean;
       isMultiple?: boolean;
     };
+    clear?: boolean;
   }
 
   interface ToolbarButtonDefaultProps {

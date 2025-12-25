@@ -26,6 +26,7 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({
   format,
   image,
   aiEnhance = false,
+  clear = false,
 }) => {
   const { iframeRef, ctx } = useEditor();
   const [chain, setChain] = React.useState<EditorChain | null>(null);
@@ -65,7 +66,7 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({
               <ToolbarButton
                 toolButtonSize="xs"
                 tooltip="AI Enhance"
-                className="bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
+                className="bg-linear-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
               >
                 <Sparkles className="w-4 h-4" />
               </ToolbarButton>
@@ -114,16 +115,18 @@ export const ToolbarChain: React.FC<ToolbarChainProps> = ({
 
         <ToolbarButtonSeparator />
 
-        <ToolbarGroup>
-          <ToolbarButton
-            toolButtonSize="xs"
-            tooltip="Clear Formatting"
-            onClick={() => chain?.clear()?.run()}
-            variant="outline"
-          >
-            <Ban className="w-4 h-4" />
-          </ToolbarButton>
-        </ToolbarGroup>
+        {clear && (
+          <ToolbarGroup>
+            <ToolbarButton
+              toolButtonSize="xs"
+              tooltip="Clear Formatting"
+              onClick={() => chain?.clear()?.run()}
+              variant="outline"
+            >
+              <Ban className="w-4 h-4" />
+            </ToolbarButton>
+          </ToolbarGroup>
+        )}
       </ToolbarWrapper>
     </ThemeProvider>
   );

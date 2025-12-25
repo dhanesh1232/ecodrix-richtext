@@ -3759,7 +3759,8 @@ import { Fragment as Fragment4, jsx as jsx26, jsxs as jsxs18 } from "react/jsx-r
 var ToolbarChain = ({
   format,
   image,
-  aiEnhance = false
+  aiEnhance = false,
+  clear = false
 }) => {
   const { iframeRef, ctx } = useEditor();
   const [chain, setChain] = React14.useState(null);
@@ -3792,7 +3793,7 @@ var ToolbarChain = ({
             {
               toolButtonSize: "xs",
               tooltip: "AI Enhance",
-              className: "bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0",
+              className: "bg-linear-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0",
               children: /* @__PURE__ */ jsx26(Sparkles, { className: "w-4 h-4" })
             }
           ) }),
@@ -3838,7 +3839,7 @@ var ToolbarChain = ({
           )
         ] }),
         /* @__PURE__ */ jsx26(ToolbarButtonSeparator, {}),
-        /* @__PURE__ */ jsx26(ToolbarGroup, { children: /* @__PURE__ */ jsx26(
+        clear && /* @__PURE__ */ jsx26(ToolbarGroup, { children: /* @__PURE__ */ jsx26(
           ToolbarButton,
           {
             toolButtonSize: "xs",

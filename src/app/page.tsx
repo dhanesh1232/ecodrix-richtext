@@ -26,6 +26,7 @@ export default function Page() {
               code: true,
               blockquote: true,
             },
+            clear: true,
           }}
         />
       </div>
